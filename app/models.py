@@ -4,8 +4,8 @@ from uuid import UUID, uuid4
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
-    JSON, BigInteger, Boolean, CheckConstraint, Date, DateTime, Enum,
-    ForeignKey, Integer, String, Text, UniqueConstraint, Uuid,
+    JSON, BigInteger, Boolean, CheckConstraint, Date, DateTime, Enum, Float,
+    ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint, Uuid,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -33,6 +33,7 @@ class FeedType(StrEnum):
     MISSED = "missed"
     NUDGE_SENT = "nudge_sent"
     PAYOUT = "payout"
+    QUESTION = "question"  # a learner chose to post an unanswered question to the circle
 
 
 def enum_type(enum, name):
@@ -41,7 +42,29 @@ def enum_type(enum, name):
 
 
 JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
-UUID_LIST = JSON().with_variant(ARRAY(Uuid()), "postgresql")
+
+
+class UUIDList(TypeDecorator):
+    """uuid[] on PostgreSQL; a JSON list of strings elsewhere, returned as UUIDs either way."""
+
+    impl = JSON
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        return dialect.type_descriptor(ARRAY(Uuid()) if dialect.name == "postgresql" else JSON())
+
+    def process_bind_param(self, value, dialect):
+        if value is None or dialect.name == "postgresql":
+            return value
+        return [str(UUID(str(item))) for item in value]
+
+    def process_result_value(self, value, dialect):
+        if value is None or dialect.name == "postgresql":
+            return value
+        return [UUID(item) for item in value]
+
+
+UUID_LIST = UUIDList()
 TIMESTAMP = DateTime(timezone=True)
 
 
@@ -190,6 +213,9 @@ class QALog(Identified, Base):
     retrieved_chunk_ids: Mapped[list[UUID]] = mapped_column(UUID_LIST)
     answered: Mapped[bool] = mapped_column(Boolean)
     fallback_reason: Mapped[str | None] = mapped_column(Text)
+    # Evaluation aids: best retrieval similarity, and the citations of an accepted answer.
+    top_score: Mapped[float | None] = mapped_column(Float)
+    cited_chunk_ids: Mapped[list[UUID] | None] = mapped_column(UUID_LIST)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
 
 

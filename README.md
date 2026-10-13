@@ -34,11 +34,11 @@ A database-backed virtual clock lets admin commands such as `/simulate_day` and 
 
 ## Tech stack
 
-Python 3.12, FastAPI, SQLAlchemy and Alembic, PostgreSQL 16 with pgvector, and local `multilingual-e5-small` embeddings. The plan also uses a free-tier OpenAI-compatible LLM (Gemini or Groq), python-telegram-bot, faster-whisper or Groq Whisper for speech-to-text, Meta MMS-TTS for speech output, and the Africa's Talking USSD sandbox.
+Python 3.12, FastAPI, SQLAlchemy and Alembic, PostgreSQL 16 with pgvector, and local `multilingual-e5-small` embeddings. Answers come from any OpenAI-compatible LLM; the POC is configured for OpenAI GPT (Gemini and Groq also work). The plan also uses python-telegram-bot, faster-whisper or Groq Whisper for speech-to-text, Meta MMS-TTS for speech output, and the Africa's Talking USSD sandbox.
 
 ## Status
 
-The **foundation** is complete: configuration, the database schema and migrations, the virtual clock, privacy helpers (salted identity hashing and learner deletion), and the adapter registry. **Corpus ingestion** is complete too: about 200 pages of OpenStax Biology, chunked, embedded locally and mapped to 10 JAMB topics. The next steps are cited question answering, Telegram onboarding, lessons, simulation, nudges and payouts. See [plan.md](plan.md) for the milestone checklist.
+The **foundation** is complete: configuration, the database schema and migrations, the virtual clock, privacy helpers (salted identity hashing and learner deletion), and the adapter registry. **Corpus ingestion** is complete too: about 200 pages of OpenStax Biology, chunked, embedded locally and mapped to 10 JAMB topics. **Cited question answering** is complete: retrieval, a citation-enforced answer pipeline with a claim-support check, the library fallback with an "ask my circle" option, and a 20-question evaluation set. The next steps are Telegram onboarding, lessons, simulation, nudges and payouts. See [plan.md](plan.md) for the milestone checklist.
 
 ## Getting started
 
@@ -58,6 +58,13 @@ To build the corpus, run the command below. The first run downloads about 590 MB
 
 ```bash
 uv run python -m ingest.ingest --sources ingest/sources.yaml
+```
+
+To answer questions, set `LLM_ENABLED=true`, `LLM_BASE_URL=https://api.openai.com/v1`, `LLM_API_KEY` and `LLM_MODEL` (for example `gpt-5.4-mini`) in `.env`. Responses are cached in the database by prompt hash, so a rehearsed demo makes no live LLM calls. Then run the evaluation set:
+
+```bash
+uv run python -m app.core.qa_eval                   # 20 questions; exits non-zero if acceptance fails
+uv run python -m app.core.qa_eval --retrieval-only  # tune RETRIEVAL_MIN_SCORE without calling the LLM
 ```
 
 Integrations (Telegram, LLM, speech-to-text) are off by default and are switched on with flags in `.env`. Each one asks for its credentials only when it is enabled. Never commit `.env`.

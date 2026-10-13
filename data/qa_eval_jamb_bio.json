@@ -1,0 +1,26 @@
+{
+  "goal": "jamb_bio",
+  "description": "Milestone 2 QA evaluation set (spec section 16): 15 questions answerable from the ingested corpus and 5 out of scope. `sections` lists the corpus sections that contain the answer; retrieval should place at least one of them in the top eight.",
+  "questions": [
+    {"id": "a01", "answerable": true, "topic": "living_organisms", "question": "What is binomial nomenclature and who introduced it?", "sections": ["12.1 Organizing Life on Earth", "1.1 Themes and Concepts of Biology"]},
+    {"id": "a02", "answerable": true, "topic": "cell_structure", "question": "What is the function of the mitochondria in a cell?", "sections": ["3.3 Eukaryotic Cells"]},
+    {"id": "a03", "answerable": true, "topic": "cell_structure", "question": "How are prokaryotic cells different from eukaryotic cells?", "sections": ["3.2 Comparing Prokaryotic and Eukaryotic Cells", "3.3 Eukaryotic Cells"]},
+    {"id": "a04", "answerable": true, "topic": "cell_structure", "question": "What is osmosis?", "sections": ["3.5 Passive Transport", "41.1 Osmoregulation and Osmotic Balance"]},
+    {"id": "a05", "answerable": true, "topic": "cell_division", "question": "What happens during interphase of the cell cycle?", "sections": ["6.2 The Cell Cycle"]},
+    {"id": "a06", "answerable": true, "topic": "cell_division", "question": "What is crossing over in meiosis and why is it important?", "sections": ["7.2 Meiosis", "7.1 Sexual Reproduction"]},
+    {"id": "a07", "answerable": true, "topic": "photosynthesis", "question": "What are the products of the light-dependent reactions of photosynthesis?", "sections": ["5.2 The Light-Dependent Reactions of Photosynthesis", "5.1 Overview of Photosynthesis"]},
+    {"id": "a08", "answerable": true, "topic": "photosynthesis", "question": "What happens in the Calvin cycle?", "sections": ["5.3 The Calvin Cycle", "5.1 Overview of Photosynthesis"]},
+    {"id": "a09", "answerable": true, "topic": "respiration", "question": "How does alcohol fermentation happen in yeast?", "sections": ["4.4 Fermentation"]},
+    {"id": "a10", "answerable": true, "topic": "animal_nutrition", "question": "What does bile do during digestion?", "sections": ["34.3 Digestive System Processes", "34.1 Digestive Systems", "16.2 Digestive System"]},
+    {"id": "a11", "answerable": true, "topic": "transport", "question": "What is the function of platelets in the blood?", "sections": ["40.2 Components of the Blood"]},
+    {"id": "a12", "answerable": true, "topic": "transport", "question": "How does water move up the xylem of a plant?", "sections": ["30.5 Transport of Water and Solutes in Plants"]},
+    {"id": "a13", "answerable": true, "topic": "excretion", "question": "What is a nephron and what does it do in the kidney?", "sections": ["41.2 The Kidneys and Osmoregulatory Organs", "16.1 Homeostasis and Osmoregulation"]},
+    {"id": "a14", "answerable": true, "topic": "heredity", "question": "What is Mendel's law of segregation?", "sections": ["8.2 Laws of Inheritance", "8.1 Mendel’s Experiments"]},
+    {"id": "a15", "answerable": true, "topic": "ecology", "question": "What is a trophic level in a food chain?", "sections": ["20.1 Energy Flow through Ecosystems"]},
+    {"id": "o01", "answerable": false, "question": "Who won the Super Eagles match?"},
+    {"id": "o02", "answerable": false, "question": "What is quantum entanglement?"},
+    {"id": "o03", "answerable": false, "question": "How do I renew my Nigerian passport?"},
+    {"id": "o04", "answerable": false, "question": "How do I solve a quadratic equation using the formula?"},
+    {"id": "o05", "answerable": false, "question": "Who is the current governor of Lagos State?"}
+  ]
+}

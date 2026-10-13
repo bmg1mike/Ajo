@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     llm_base_url: str = ""
     llm_api_key: SecretStr = SecretStr("")
     llm_model: str = ""
+    # Optional request parameters; leave unset for models that reject them
+    # (OpenAI reasoning models accept only the default temperature).
+    llm_temperature: float | None = None
+    llm_reasoning_effort: str = ""
+    llm_timeout_seconds: float = 60.0
     stt_enabled: bool = False
     stt_backend: Literal["local", "groq"] = "local"
     groq_api_key: SecretStr = SecretStr("")
@@ -39,6 +44,11 @@ class Settings(BaseSettings):
         if not 0 <= value <= 1:
             raise ValueError("RETRIEVAL_MIN_SCORE must be between 0 and 1")
         return value
+
+    @field_validator("llm_temperature", mode="before")
+    @classmethod
+    def blank_temperature(cls, value: object) -> object:
+        return None if isinstance(value, str) and not value.strip() else value
 
     @field_validator("admin_ids")
     @classmethod

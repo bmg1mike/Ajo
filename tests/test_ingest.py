@@ -1,6 +1,4 @@
-import hashlib
 import json
-import math
 import random
 import re
 from datetime import UTC, date, datetime
@@ -19,30 +17,12 @@ from ingest.catalog import load_catalog, load_syllabus
 from ingest.chunking import chunk_section
 from ingest.ingest import build_corpus, coverage_problems, format_report, persist
 from ingest.pdf import IngestError, Segment, SourceDocument, ensure_pdf, sha256_file
+from tests.fakes import FakeEmbedder
 from tests.pdf_builder import build_pdf
 
 SALT = "synthetic-test-salt-with-32-characters"
 LEAF_WORDS = "chlorophyll light leaf sugar carbon dioxide stomata glucose"
 KIDNEY_WORDS = "kidney nephron urine urea filtration bladder water salt"
-
-
-class FakeEmbedder:
-    """Whitespace tokens and hashed bag-of-words vectors: deterministic and model-free."""
-
-    def count_tokens(self, text: str) -> int:
-        return len(text.split())
-
-    def embed_passages(self, texts):
-        return [self._vector(text) for text in texts]
-
-    embed_queries = embed_passages
-
-    def _vector(self, text: str) -> list[float]:
-        vector = [0.0] * embeddings.EMBEDDING_DIMENSION
-        for word in re.findall(r"[a-z]+", text.lower()):
-            vector[int(hashlib.sha256(word.encode()).hexdigest(), 16) % len(vector)] += 1
-        norm = math.sqrt(sum(value * value for value in vector)) or 1.0
-        return [value / norm for value in vector]
 
 
 def sentences(words: str, count: int, start: int = 0) -> list[str]:

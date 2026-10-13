@@ -5,6 +5,7 @@ requires-python = ">=3.12"
 dependencies = [
     "alembic>=1.20.0",
     "fastapi[standard]>=0.143.0",
+    "httpx>=0.28.1",
     "pgvector>=0.5.1",
     "psycopg[binary]>=3.3.6",
     "pydantic-settings>=2.15.0",
@@ -26,6 +27,7 @@ pythonpath = ["."]
 markers = [
     "postgres: requires TEST_DATABASE_URL pointing to a disposable pgvector PostgreSQL database",
     "corpus: ingests the real downloaded corpus with the local embedding model (AJO_CORPUS_TESTS=1)",
+    "qa_eval: runs the QA evaluation set against the ingested database and configured LLM (AJO_QA_EVAL=1)",
 ]
 
 [tool.fastapi]

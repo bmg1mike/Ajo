@@ -53,15 +53,17 @@ Depends on the foundation.
 
 Depends on milestone 1.
 
-- [ ] Build the configurable OpenAI-compatible LLM client with retries, backoff, and prompt-hash caching; centralize prompt templates.
-- [ ] Embed questions with `query: ` prefixes and retrieve the top eight chunks filtered to the learner's goal.
-- [ ] Start `RETRIEVAL_MIN_SCORE` at 0.80 and tune it against the evaluation set.
-- [ ] Validate output schema, answerability, nonempty citations, membership of citation IDs in the retrieved set, and a second claim-support check.
-- [ ] Render source title, section, and page; limit source excerpts to 600 characters. Log all outcomes in `qa_log`.
-- [ ] Implement the library fallback and the learner-controlled option to ask the circle.
-- [ ] Create the 20-question evaluation set: 15 answerable Biology questions and five out-of-scope questions.
+- [x] Build the configurable OpenAI-compatible LLM client with retries, backoff, and prompt-hash caching; centralize prompt templates.
+- [x] Embed questions with `query: ` prefixes and retrieve the top eight chunks filtered to the learner's goal.
+- [x] Start `RETRIEVAL_MIN_SCORE` at 0.80 and tune it against the evaluation set.
+- [x] Validate output schema, answerability, nonempty citations, membership of citation IDs in the retrieved set, and a second claim-support check.
+- [x] Render source title, section, and page; limit source excerpts to 600 characters. Log all outcomes in `qa_log`.
+- [x] Implement the library fallback and the learner-controlled option to ask the circle.
+- [x] Create the 20-question evaluation set: 15 answerable Biology questions and five out-of-scope questions.
 
 **Completion check:** At least 13/15 answerable questions receive valid cited answers; all 5/5 out-of-scope questions fall back; no accepted citation comes from outside the retrieved set.
+
+**Validation:** `uv run python -m app.core.qa_eval` with OpenAI `gpt-5.4-mini` (`LLM_REASONING_EFFORT=low`) answers 14/15 answerable questions with valid citations, falls back on 5/5 out-of-scope questions (three below the retrieval threshold, two returned unanswerable by the model), and accepts zero citations outside the retrieved set. The one miss (osmosis) is a strict claim-check rejection, which fails safe. `AJO_QA_EVAL=1 uv run pytest -m qa_eval` reruns the check; with a warm cache it makes no live LLM calls. Retrieval ranks an expected section first for all 15 answerable questions. Their top scores range from 0.815 to 0.899, and out-of-scope top scores range from 0.738 to 0.822. No threshold separates the two sets, so `RETRIEVAL_MIN_SCORE` stays at 0.80: it keeps every answerable question and leaves the two highest-scoring out-of-scope questions to the model and the claim check. `tests/test_qa.py` covers client retries, cache and offline behaviour, goal-scoped retrieval on SQLite and PostgreSQL, every rejection path, payload privacy, source excerpts, and asking the circle. Implementation notes: the model cites short labels (`C1`–`C8`) that are mapped back to chunk IDs, and any unknown label rejects the answer. The claim check sees only the cited chunks, so an answer relying on an uncited chunk is rejected. Its verdict must be exactly yes or no; qualified replies fall back. Phone numbers, numeric IDs and emails are redacted by shape from LLM prompts, `qa_log` and circle posts. Posting to the circle records a `question` feed event that milestone 5 delivers with the batched feed. Fixed UI strings are English only until the milestone 3 language review.
 
 ## Milestone 3: Telegram Onboarding
 
@@ -171,7 +173,7 @@ Depends on milestones 3–4 and demo seeding; optional.
 ## Decisions to Resolve During Implementation
 
 - Select the local language for the minimum demo; the full demo script favors Yoruba while personas also use Pidgin.
-- Select the free LLM provider and supported model, verify current API compatibility and quotas, and retain configuration-based switching.
+- Select the free LLM provider and supported model, verify current API compatibility and quotas, and retain configuration-based switching. Milestone 2 uses OpenAI GPT (`gpt-5.4-mini`); the client remains provider-agnostic. Unlike the free tiers in spec section 3.1, this is a paid API.
 - Define virtual-day scheduling and weekly-boundary behavior before implementing the scheduler so real and simulated runs agree.
 - Define syllabus behavior after the ten-topic sequence and expired-opportunity handling without inventing unverified content.
 - Keep WhatsApp, production auth, real matching, additional exams, mentor roles, and offline Android work outside this implementation.

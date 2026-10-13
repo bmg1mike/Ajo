@@ -1,4 +1,5 @@
-from collections.abc import Sequence
+import threading
+from collections.abc import Callable, Sequence
 from typing import Protocol
 
 # Must match the chunks.embedding column width.
@@ -50,3 +51,27 @@ class E5Embedder:
         vectors = self._model.encode(texts, batch_size=self._batch_size, normalize_embeddings=True,
                                      convert_to_numpy=True)
         return vectors.tolist()
+
+
+class LazyEmbedder:
+    """Defers building the real embedder (seconds of model loading) until first use."""
+
+    def __init__(self, factory: Callable[[], Embedder]) -> None:
+        self._factory = factory
+        self._embedder: Embedder | None = None
+        self._lock = threading.Lock()
+
+    def _get(self) -> Embedder:
+        with self._lock:
+            if self._embedder is None:
+                self._embedder = self._factory()
+            return self._embedder
+
+    def count_tokens(self, text: str) -> int:
+        return self._get().count_tokens(text)
+
+    def embed_passages(self, texts: Sequence[str]) -> list[list[float]]:
+        return self._get().embed_passages(texts)
+
+    def embed_queries(self, texts: Sequence[str]) -> list[list[float]]:
+        return self._get().embed_queries(texts)
