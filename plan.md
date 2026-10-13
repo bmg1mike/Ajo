@@ -38,14 +38,16 @@ Complete before milestone 1.
 
 Depends on the foundation.
 
-- [ ] Curate licensed or official public sources in `ingest/sources.yaml`, recording publisher, URL, and license. Download approximately 200 pages of Biology content.
-- [ ] Define 10 ordered JAMB Biology topics in `data/syllabus_jamb_bio.json`.
-- [ ] Extract text with page metadata; create 300–500-token chunks with 50-token overlap and respect section boundaries where detectable.
-- [ ] Map chunks to syllabus topics with embedding similarity and manual spot checks.
-- [ ] Embed locally with `intfloat/multilingual-e5-small`, using `passage: ` prefixes, and store vectors and source metadata.
-- [ ] Provide `uv run python -m ingest.ingest --sources ingest/sources.yaml` and a source/topic coverage report.
+- [x] Curate licensed or official public sources in `ingest/sources.yaml`, recording publisher, URL, and license. Download approximately 200 pages of Biology content.
+- [x] Define 10 ordered JAMB Biology topics in `data/syllabus_jamb_bio.json`.
+- [x] Extract text with page metadata; create 300–500-token chunks with 50-token overlap and respect section boundaries where detectable.
+- [x] Map chunks to syllabus topics with embedding similarity and manual spot checks.
+- [x] Embed locally with `intfloat/multilingual-e5-small`, using `passage: ` prefixes, and store vectors and source metadata.
+- [x] Provide `uv run python -m ingest.ingest --sources ingest/sources.yaml` and a source/topic coverage report.
 
 **Completion check:** Approximately 200 pages ingested; every topic has at least five chunks; citations retain source, section, and page information.
+
+**Validation:** `uv run python -m ingest.ingest --sources ingest/sources.yaml` ingests 213 pages (35 sections of OpenStax *Concepts of Biology* and *Biology 2e*) into 300 chunks (only section-final chunks fall below 300 tokens); every topic has at least 16 chunks, and a second run updates rows in place. `AJO_CORPUS_TESTS=1 uv run pytest -m corpus` checks these criteria against the real PDFs and model; `tests/test_ingest.py` covers chunking, section and page extraction, topic mapping, idempotent persistence, and the citation guard and single-goal scoping on SQLite and PostgreSQL. Five sections are pinned to topics in `sources.yaml` after spot checks of the report. Note: OpenStax now licenses both books CC BY-NC-SA 4.0, not CC BY 4.0 as `spec.md` states, and the syllabus objectives in `data/syllabus_jamb_bio.json` still need review against the official JAMB syllabus.
 
 ## Milestone 2: Cited Question Answering
 

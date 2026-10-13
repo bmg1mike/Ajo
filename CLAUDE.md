@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Ajo is a proof of concept for a messaging-first JAMB Biology study companion: small accountability "circles" with cited RAG answers, daily lessons, peer nudges, and weekly payouts. `spec.md` is the source of truth for behavior and acceptance criteria (section 16); `plan.md` orders the work into a foundation phase plus milestones 1–10. Only the foundation exists so far (config, DB models, migrations, virtual clock, privacy helpers, adapter registry). `app/llm/`, `app/sim/`, `app/speech/`, `ingest/`, `data/`, and `web/` are empty placeholders. Note that `AGENTS.md` still describes these directories as unimplemented and is partly stale.
+Ajo is a proof of concept for a messaging-first JAMB Biology study companion: small accountability "circles" with cited RAG answers, daily lessons, peer nudges, and weekly payouts. `spec.md` is the source of truth for behavior and acceptance criteria (section 16); `plan.md` orders the work into a foundation phase plus milestones 1–10. The foundation (config, DB models, migrations, virtual clock, privacy helpers, adapter registry) and milestone 1 (corpus ingestion) are done. `app/llm/`, `app/sim/`, `app/speech/`, and `web/` are empty placeholders. Note that `AGENTS.md` still describes these directories as unimplemented and is partly stale.
 
 ## Commands
 
@@ -20,6 +20,10 @@ uv run pytest tests/test_foundation.py::test_clock_advances_accumulate
 uv run pytest -k "clock and sqlite"                       # DB tests are parametrized [sqlite] / [postgres]
 TEST_DATABASE_URL=postgresql+psycopg://ajo:ajo@localhost:5432/ajo uv run pytest   # also run Postgres variants
 uv run alembic revision --autogenerate -m "..."           # new migration in migrations/versions/
+
+uv run python -m ingest.ingest --sources ingest/sources.yaml   # build corpus (downloads ~590 MB PDFs on first run)
+uv run python -m ingest.ingest --dry-run --offline            # report only; no downloads, no DB writes
+AJO_CORPUS_TESTS=1 uv run pytest -m corpus                     # milestone 1 check on real PDFs + e5 model
 ```
 
 With `TEST_DATABASE_URL` set, the Postgres fixture creates and drops a throwaway `ajo_test_<uuid>` database, so the configured user needs CREATEDB. Without it, the Postgres variants are skipped. No linter or formatter is configured.
@@ -32,6 +36,8 @@ With `TEST_DATABASE_URL` set, the Postgres fixture creates and drops a throwaway
 - **Virtual clock** (`app/core/clock.py`): `now()` = real UTC + `offset_seconds`, stored in the singleton `clock_state` row (seeded by migration 0001). Business logic must use `app.state.clock.now()`, never `datetime.now()`. `advance()` accepts only positive whole seconds and updates atomically in SQL.
 - **Adapters** (`app/adapters/base.py`): core code calls `AdapterRegistry.send_*`, which routes by `learner.channel` and silently skips `is_simulated` learners. Core must never import a concrete adapter. Keep adapters thin.
 - **Privacy** (`app/core/privacy.py`): `channel_hash` produces salted SHA-256 hashes (channel user IDs and phone numbers are never stored raw). `delete_learner(..., confirmed=True)` relies on FK `ON DELETE CASCADE`, and it also scans `feed_events`, `outbound_deliveries` and `llm_cache` JSON for learner identifiers and deletes matching rows. When you add tables that reference learners, give them a cascading FK or extend this scan.
+- **Ingestion** (`ingest/`): `sources.yaml` (catalog: PDF URL, pinned SHA-256, license, footer `line_patterns`, and sections named by exact PDF bookmark title) → `pdf.py` (slices each section between its bookmark and the next one, splitting mid-page at the heading line; printed page numbers come from footers, inferred from neighbours on chapter openers) → `chunking.py` (300–500 e5 tokens, 50-token word overlap, never crossing sections; only a section-final chunk may be under 300, so a sentence is split to fill a short chunk) → `ingest.py` (e5 `passage:` embeddings; topic = argmax cosine against `query:`-embedded syllabus topics, blended 50/50 with the section mean; `topic:` in `sources.yaml` pins a section after spot checks). Row IDs are uuid5 of content, so re-runs update in place; `persist` prunes sources/chunks not in the catalog but only within the ingested goal (it rejects a database holding any other goal) and never chunks cited by lessons or questions. Tests use `FakeEmbedder` and `tests/pdf_builder.py` instead of the model and real PDFs.
+- **Embeddings** (`app/core/embeddings.py`): `Embedder` protocol shared with milestone 2 retrieval. `E5Embedder` loads sentence-transformers lazily and refuses passages longer than 512 tokens rather than silently truncating.
 - **Config** (`app/config.py`): pydantic-settings reads `.env`. Each integration (`TELEGRAM_ENABLED`, `LLM_ENABLED`, `STT_ENABLED`) validates its own credentials only when enabled. Tests build `Settings(_env_file=None, hash_salt=...)` explicitly instead of relying on `.env`.
 
 ## Rules from spec/plan that constrain new code

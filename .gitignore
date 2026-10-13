@@ -6,3 +6,7 @@ test.txt
 __pycache__/
 .pytest_cache/
 *.db
+
+# Downloaded source PDFs (fetched and checksum-verified by ingest/ingest.py)
+data/corpus/*.pdf
+data/corpus/*.part

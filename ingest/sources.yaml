@@ -1,0 +1,95 @@
+# Corpus sources for JAMB Biology. Only openly licensed or official public material.
+#
+# `sections` must match PDF outline (bookmark) titles exactly; each section runs to the
+# next outline entry, so end-of-chapter summaries and review questions are excluded.
+# `sha256` pins the edition: OpenStax revises PDFs in place, and a new edition can move
+# pages, so re-check sections and printed page numbers before updating a checksum.
+# A section may set `topic: <code>` to override embedding-based topic mapping after a
+# manual spot check (see the ingestion report).
+#
+# License note: OpenStax now publishes both books under CC BY-NC-SA 4.0 (spec.md lists
+# CC BY 4.0). Non-commercial use with attribution is fine for this POC; revisit before
+# any commercial use.
+
+x-openstax-line-patterns: &openstax_line_patterns
+  - '^(?P<page>\d+) \d+ • .+$'            # even-page footer: "118 5 • Photosynthesis"
+  - '^\d+\.\d+ • .+ (?P<page>\d+)$'       # odd-page footer: "5.1 • Overview of Photosynthesis 119"
+  - '^Access for free at openstax\.org$'
+
+sources:
+  - key: openstax-concepts-biology
+    title: Concepts of Biology
+    publisher: OpenStax, Rice University
+    license: CC BY-NC-SA 4.0
+    license_url: https://creativecommons.org/licenses/by-nc-sa/4.0/
+    url: https://openstax.org/details/books/concepts-biology
+    download_url: https://assets.openstax.org/oscms-prodcms/media/documents/Concepts-Biology_-_WEB.pdf
+    file: Concepts-Biology_-_WEB.pdf
+    sha256: da0ffc8585e172f04eb0abb08949087baf85cc229ef2736ef06e5aa17094b1f6
+    line_patterns: *openstax_line_patterns
+    sections:
+      # living_organisms
+      - 1.1 Themes and Concepts of Biology
+      - 12.1 Organizing Life on Earth
+      - 14.1 The Plant Kingdom
+      - title: 15.1 Features of the Animal Kingdom
+        topic: living_organisms  # spot check: similarity favoured cell_division
+      # cell_structure
+      - 3.2 Comparing Prokaryotic and Eukaryotic Cells
+      - 3.3 Eukaryotic Cells
+      - 3.4 The Cell Membrane
+      - 3.5 Passive Transport
+      # cell_division
+      - 6.2 The Cell Cycle
+      - 7.1 Sexual Reproduction
+      - 7.2 Meiosis
+      # photosynthesis
+      - 5.1 Overview of Photosynthesis
+      - 5.2 The Light-Dependent Reactions of Photosynthesis
+      - 5.3 The Calvin Cycle
+      # respiration
+      - title: 4.1 Energy and Metabolism
+        topic: respiration  # spot check: similarity favoured excretion
+      - 4.2 Glycolysis
+      - 4.3 Citric Acid Cycle and Oxidative Phosphorylation
+      - 4.4 Fermentation
+      # animal_nutrition
+      - 16.2 Digestive System
+      # transport
+      - 16.3 Circulatory and Respiratory Systems
+      # excretion
+      - 16.1 Homeostasis and Osmoregulation
+      # heredity
+      - 8.1 Mendel’s Experiments
+      - 8.2 Laws of Inheritance
+      - 8.3 Extensions of the Laws of Inheritance
+      # ecology
+      - title: 19.4 Community Ecology
+        topic: ecology  # spot check: similarity favoured living_organisms
+      - 20.1 Energy Flow through Ecosystems
+      - title: 20.2 Biogeochemical Cycles
+        topic: ecology  # spot check: similarity favoured excretion
+
+  - key: openstax-biology-2e
+    title: Biology 2e
+    publisher: OpenStax, Rice University
+    license: CC BY-NC-SA 4.0
+    license_url: https://creativecommons.org/licenses/by-nc-sa/4.0/
+    url: https://openstax.org/details/books/biology-2e
+    download_url: https://assets.openstax.org/oscms-prodcms/media/documents/Biology-2e_-_WEB.pdf
+    file: Biology-2e_-_WEB.pdf
+    sha256: 4d1f413fd779f114838cdaeab7859dcb2922ca7529230d3bfd7d36a77b4e27b6
+    line_patterns: *openstax_line_patterns
+    sections:
+      # animal_nutrition
+      - 34.1 Digestive Systems
+      - 34.3 Digestive System Processes
+      # transport
+      - 30.5 Transport of Water and Solutes in Plants
+      - 40.1 Overview of the Circulatory System
+      - title: 40.2 Components of the Blood
+        topic: transport  # spot check: similarity favoured cell_structure
+      # excretion
+      - 41.1 Osmoregulation and Osmotic Balance
+      - 41.2 The Kidneys and Osmoregulatory Organs
+      - 41.4 Nitrogenous Wastes

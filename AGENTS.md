@@ -12,6 +12,8 @@ The package layout, settings, ORM models, Alembic migrations, virtual clock, ada
 - `docker compose up -d --wait`: start PostgreSQL 16 with pgvector.
 - `uv run alembic upgrade head`: initialize or upgrade the schema before starting the API.
 - `uv run alembic check`: check model/schema agreement.
+- `uv run python -m ingest.ingest --sources ingest/sources.yaml`: download (first run, ~590 MB, SHA-256 verified) and ingest the Biology corpus, print a coverage report, and upsert sources, topics, and chunks. Add `--dry-run` to report without writing, `--offline` to forbid downloads.
+- `AJO_CORPUS_TESTS=1 uv run pytest -m corpus`: check milestone 1 criteria against the real PDFs and embedding model (~1 minute).
 - `uv run pytest`: run unit tests; PostgreSQL tests skip unless `TEST_DATABASE_URL` is set.
 - `TEST_DATABASE_URL=postgresql+psycopg://ajo:ajo@localhost:5432/ajo uv run pytest`: run both SQLite and isolated PostgreSQL suites.
 - `uv run fastapi dev app/main.py`: start the local development server at `http://localhost:8000` with reload.

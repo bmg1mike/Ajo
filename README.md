@@ -38,7 +38,7 @@ Python 3.12, FastAPI, SQLAlchemy and Alembic, PostgreSQL 16 with pgvector, and l
 
 ## Status
 
-The **foundation** is complete: configuration, the database schema and migrations, the virtual clock, privacy helpers (salted identity hashing and learner deletion), and the adapter registry. The next steps are corpus ingestion, cited question answering, Telegram onboarding, lessons, simulation, nudges and payouts. See [plan.md](plan.md) for the milestone checklist.
+The **foundation** is complete: configuration, the database schema and migrations, the virtual clock, privacy helpers (salted identity hashing and learner deletion), and the adapter registry. **Corpus ingestion** is complete too: about 200 pages of OpenStax Biology, chunked, embedded locally and mapped to 10 JAMB topics. The next steps are cited question answering, Telegram onboarding, lessons, simulation, nudges and payouts. See [plan.md](plan.md) for the milestone checklist.
 
 ## Getting started
 
@@ -53,6 +53,12 @@ uv run fastapi dev             # http://localhost:8000
 ```
 
 `GET /health` reports database connectivity and the current virtual time.
+
+To build the corpus, run the command below. The first run downloads about 590 MB of OpenStax PDFs into `data/corpus/` and the embedding model. It prints a coverage report and writes nothing if any topic has fewer than five chunks.
+
+```bash
+uv run python -m ingest.ingest --sources ingest/sources.yaml
+```
 
 Integrations (Telegram, LLM, speech-to-text) are off by default and are switched on with flags in `.env`. Each one asks for its credentials only when it is enabled. Never commit `.env`.
 

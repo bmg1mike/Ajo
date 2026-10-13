@@ -1,0 +1,60 @@
+{
+  "goal": {
+    "code": "jamb_bio",
+    "title": "JAMB UTME Biology",
+    "country": "NG",
+    "exam_date": null
+  },
+  "topics": [
+    {
+      "code": "living_organisms",
+      "title": "Characteristics and Classification of Living Organisms",
+      "objectives": "Describe the characteristics of living things and the levels of organisation from cell to biosphere. Explain how organisms are named and classified into domains, kingdoms and smaller groups, and distinguish plants from animals."
+    },
+    {
+      "code": "cell_structure",
+      "title": "The Cell: Structure and Function",
+      "objectives": "State the cell theory. Compare prokaryotic and eukaryotic cells and plant and animal cells. Describe the functions of the nucleus, mitochondria, chloroplasts, ribosomes, vacuoles, cell wall and cell membrane. Explain diffusion, osmosis and active transport across the cell membrane."
+    },
+    {
+      "code": "cell_division",
+      "title": "Cell Division: Mitosis and Meiosis",
+      "objectives": "Describe the cell cycle and the stages of mitosis. Explain the stages of meiosis and how it produces haploid gametes. Compare mitosis and meiosis and explain the role of each in growth, repair and sexual reproduction."
+    },
+    {
+      "code": "photosynthesis",
+      "title": "Photosynthesis",
+      "objectives": "Explain how green plants make food using light energy, chlorophyll, carbon dioxide and water. Describe the light-dependent reactions and the Calvin cycle, the role of chloroplasts and the products of photosynthesis, including oxygen and glucose."
+    },
+    {
+      "code": "respiration",
+      "title": "Cellular Respiration",
+      "objectives": "Explain how cells release energy from food as ATP. Describe glycolysis, the citric acid (Krebs) cycle and oxidative phosphorylation. Compare aerobic and anaerobic respiration, including fermentation in yeast and muscle."
+    },
+    {
+      "code": "animal_nutrition",
+      "title": "Nutrition and Digestion in Animals",
+      "objectives": "Describe the classes of food and a balanced diet. Explain the structure of the alimentary canal and digestion of carbohydrates, proteins and fats by enzymes in the mouth, stomach and small intestine, followed by absorption and egestion."
+    },
+    {
+      "code": "transport",
+      "title": "Transport in Plants and Animals",
+      "objectives": "Describe the composition of blood, the structure of the heart, arteries, veins and capillaries, and the circulation of blood. Explain how water and mineral salts move through xylem, how food moves through phloem, and the role of transpiration."
+    },
+    {
+      "code": "excretion",
+      "title": "Excretion, Osmoregulation and Homeostasis",
+      "objectives": "Explain homeostasis and the regulation of body temperature. Describe the structure and function of the kidney and nephron, the formation of urine, osmoregulation, and the removal of nitrogenous wastes such as urea, ammonia and uric acid."
+    },
+    {
+      "code": "heredity",
+      "title": "Genetics: Heredity and Variation",
+      "objectives": "Explain Mendel's experiments and the laws of segregation and independent assortment. Use genotype, phenotype, dominant and recessive alleles, and Punnett squares to predict monohybrid crosses. Describe incomplete dominance, codominance, sex linkage and variation."
+    },
+    {
+      "code": "ecology",
+      "title": "Ecology: Ecosystems, Energy Flow and Nutrient Cycles",
+      "objectives": "Describe producers, consumers and decomposers, food chains, food webs, trophic levels and ecological pyramids. Explain energy flow through ecosystems, the water, carbon and nitrogen cycles, and interactions such as competition, predation and symbiosis in communities."
+    }
+  ]
+}
