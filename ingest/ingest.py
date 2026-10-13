@@ -16,7 +16,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.embeddings import EMBEDDING_DIMENSION, Embedder
-from app.models import Chunk, Goal, Lesson, Question, Source, SyllabusTopic
+from app.models import Chunk, Goal, Lesson, PregeneratedLesson, Question, Source, SyllabusTopic
 from ingest.catalog import Catalog, SourceSpec, Syllabus, check_topic_overrides, load_catalog, load_syllabus
 from ingest.chunking import chunk_section
 from ingest.pdf import ExtractionStats, IngestError, SourceDocument, ensure_pdf
@@ -75,6 +75,7 @@ class PersistStats:
     inserted: int = 0
     updated: int = 0
     deleted: int = 0
+    pregenerated_removed: int = 0
 
 
 def build_corpus(catalog: Catalog, syllabus: Syllabus, corpus_dir: Path, embedder: Embedder, *,
@@ -213,8 +214,9 @@ def persist(session: Session, corpus: Corpus, syllabus_ref: str) -> PersistStats
     The POC supports a single goal, so a database holding any other goal is rejected
     before anything is written. Cleanup is scoped to this goal's topics and the
     catalog's sources: stale chunks there are removed, but never chunks that lessons
-    or questions cite (regenerate those or reset the demo first). A source outside the
-    catalog is removed only once no chunks reference it.
+    or questions cite (regenerate those or reset the demo first). Pre-generated lessons
+    citing a removed chunk are deleted, to be regenerated. A source outside the catalog is
+    removed only once no chunks reference it.
     """
     syllabus = corpus.syllabus
     stats = PersistStats()
@@ -267,6 +269,11 @@ def persist(session: Session, corpus: Corpus, syllabus_ref: str) -> PersistStats
     if cited:
         raise IngestError(f"{len(cited)} chunks that would be removed are cited by lessons or questions; "
                           "regenerate those lessons or reset the demo before re-ingesting")
+    # Pre-generated lessons are a regenerable cache: drop any that cite a removed chunk.
+    for pregenerated in session.scalars(select(PregeneratedLesson)):
+        if stale & {UUID(str(value)) for value in pregenerated.cited_chunk_ids or ()}:
+            session.delete(pregenerated)
+            stats.pregenerated_removed += 1
     for identifier in stale:
         session.delete(existing_chunks[identifier])
     stats.deleted = len(stale)
@@ -349,6 +356,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"Ingestion failed: {exc}", file=sys.stderr)
         return 2
     print(f"\nDatabase updated: {stats.inserted} chunks inserted, {stats.updated} updated, {stats.deleted} removed.")
+    if stats.pregenerated_removed:
+        print(f"{stats.pregenerated_removed} pre-generated lessons cited removed chunks and were deleted; "
+              "rerun python -m app.core.lessons --pregenerate.")
     return 0
 
 

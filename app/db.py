@@ -2,6 +2,7 @@ from collections.abc import Iterator
 
 from fastapi import Request
 from sqlalchemy import create_engine, event
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -26,3 +27,8 @@ def get_session(request: Request) -> Iterator[Session]:
     with request.app.state.sessions() as session:
         with session.begin():
             yield session
+
+
+def dialect_insert(session: Session, model):
+    """An INSERT that supports ON CONFLICT on both PostgreSQL and SQLite."""
+    return (postgresql if session.get_bind().dialect.name == "postgresql" else sqlite).insert(model)

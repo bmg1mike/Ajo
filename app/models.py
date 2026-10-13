@@ -179,27 +179,47 @@ class Lesson(Identified, Base):
     body: Mapped[dict] = mapped_column(JSON_TYPE)
     cited_chunk_ids: Mapped[list[UUID]] = mapped_column(UUID_LIST)
     posted_at: Mapped[datetime] = mapped_column(TIMESTAMP)
+    # Why live generation was rejected when the pre-generated lesson was used instead; null otherwise.
+    fallback_reason: Mapped[str | None] = mapped_column(Text)
 
 
 class Question(Identified, Base):
     __tablename__ = "questions"
     __table_args__ = (CheckConstraint("difficulty BETWEEN 1 AND 3", name="question_difficulty"),)
     lesson_id: Mapped[UUID] = mapped_column(ForeignKey("lessons.id", ondelete="CASCADE"), index=True)
+    # The easier follow-up sent privately after a wrong answer points at the question it follows.
+    parent_question_id: Mapped[UUID | None] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     stem: Mapped[str] = mapped_column(Text)
     options: Mapped[dict] = mapped_column(JSON_TYPE)
     correct_option: Mapped[str] = mapped_column(String(8))
     explanation: Mapped[str] = mapped_column(Text)
     cited_chunk_ids: Mapped[list[UUID]] = mapped_column(UUID_LIST)
     difficulty: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
+    # {"yo": {"stem": ..., "options": {...}, "explanation": ...}}; the columns above hold English.
+    translations: Mapped[dict] = mapped_column(JSON_TYPE, default=dict, server_default="{}")
 
 
 class Answer(Identified, Base):
     __tablename__ = "answers"
+    __table_args__ = (UniqueConstraint("question_id", "learner_id", name="one_answer_per_question"),)
     question_id: Mapped[UUID] = mapped_column(ForeignKey("questions.id", ondelete="CASCADE"), index=True)
     learner_id: Mapped[UUID] = mapped_column(ForeignKey("learners.id", ondelete="CASCADE"), index=True)
     chosen_option: Mapped[str] = mapped_column(String(8))
     is_correct: Mapped[bool] = mapped_column(Boolean)
     answered_at: Mapped[datetime] = mapped_column(TIMESTAMP)
+
+
+class PregeneratedLesson(Base):
+    """A validated English lesson per topic, with validated translations: the fallback when generation fails.
+
+    Corpus-derived, so it survives a demo reset; ingestion removes it if a chunk it cites is pruned.
+    """
+    __tablename__ = "pregenerated_lessons"
+    topic_id: Mapped[UUID] = mapped_column(ForeignKey("syllabus_topics.id", ondelete="CASCADE"), primary_key=True)
+    content: Mapped[dict] = mapped_column(JSON_TYPE)
+    cited_chunk_ids: Mapped[list[UUID]] = mapped_column(UUID_LIST)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
 
 
 class FeedEvent(Identified, Base):

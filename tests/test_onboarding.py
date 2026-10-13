@@ -14,6 +14,7 @@ from app.core import account, circles, onboarding, qa
 from app.core.conversation import Conversation, Inbound, parse_command
 from app.core.i18n import LANGUAGE_NAMES, t
 from app.core.privacy import channel_hash
+from app.core.lessons import LessonService
 from app.core.qa import QAService
 from app.db import build_engine, session_factory
 from app.models import (
@@ -69,8 +70,9 @@ def goal_id(sessions):
 @pytest.fixture
 def make_conversation(sessions, clock, make_client):
     def make(*responses, fake: FakeLLM | None = None) -> Conversation:
-        service = QAService(FakeEmbedder(), make_client(fake or FakeLLM(*responses)), clock, min_score=0.3)
-        return Conversation(sessions, clock, service, salt=SALT)
+        client = make_client(fake or FakeLLM(*responses))
+        service = QAService(FakeEmbedder(), client, clock, min_score=0.3)
+        return Conversation(sessions, clock, service, LessonService(FakeEmbedder(), client, clock), salt=SALT)
     return make
 
 
@@ -310,7 +312,7 @@ def test_commands_for_onboarded_learners(sessions, goal_id, make_conversation):
     assert learner_for(sessions, user).share_scores is False
 
     assert user.send("/help")[0].text == t("help")
-    assert user.send("/lesson")[0].text == t("command.coming_soon")
+    assert user.send("/progress")[0].text == t("command.coming_soon")
     assert [reply.text for reply in user.send("/dance")] == [t("command.unknown"), t("help")]
     assert user.send("/ask")[0].text == t("ask.usage")
     assert user.send(None)[0].text == t("message.text_only")

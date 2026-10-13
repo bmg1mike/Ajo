@@ -127,16 +127,19 @@ STRINGS: dict[str, dict[Language, str]] = {
     },
     "help": {
         Language.EN: "Here's what you can do:\n"
+                     "• /lesson: today's lesson and questions\n"
                      "• Type any Biology question, or use /ask followed by your question\n"
                      "• /language: change your language\n"
                      "• /share_scores: choose whether your circle sees your scores\n"
                      "• /delete_me: delete your data",
         Language.YO: "Ohun tí o lè ṣe nìyí:\n"
+                     "• /lesson: ẹ̀kọ́ àti ìbéèrè òní\n"
                      "• Kọ ìbéèrè Biology èyíkéyìí, tàbí lo /ask pẹ̀lú ìbéèrè rẹ\n"
                      "• /language: yí èdè rẹ padà\n"
                      "• /share_scores: yàn bóyá ẹgbẹ́ rẹ máa rí máàkì rẹ\n"
                      "• /delete_me: pa ìwífún rẹ rẹ́",
         Language.PCM: "Na wetin you fit do be dis:\n"
+                      "• /lesson: today lesson and questions\n"
                       "• Type any Biology question, or use /ask with your question\n"
                       "• /language: change your language\n"
                       "• /share_scores: choose whether your circle go see your score\n"
@@ -281,6 +284,63 @@ STRINGS: dict[str, dict[Language, str]] = {
         Language.EN: "That source is no longer available.",
         Language.YO: "Orísun yẹn kò sí mọ́.",
         Language.PCM: "That source no dey again.",
+    },
+    # Daily lessons (spec section 7.2)
+    "lesson.header": {Language.EN: "📘 Day {day}: {topic}", Language.YO: "📘 Ọjọ́ {day}: {topic}",
+                      Language.PCM: "📘 Day {day}: {topic}"},
+    "lesson.example": {Language.EN: "Example: {example}", Language.YO: "Àpẹẹrẹ: {example}",
+                       Language.PCM: "Example: {example}"},
+    "lesson.answer_questions": {
+        Language.EN: "✏️ Answer questions",
+        Language.YO: "✏️ Dáhùn àwọn ìbéèrè",
+        Language.PCM: "✏️ Answer the questions",
+    },
+    "lesson.english_only": {
+        Language.EN: "A translation of this lesson isn't available right now, so here it is in English.",
+        Language.YO: "Ìtúmọ̀ ẹ̀kọ́ yìí kò sí nísinsìnyí, nítorí náà èyí ni ní èdè Gẹ̀ẹ́sì.",
+        Language.PCM: "Translation for this lesson no dey now, so na English be this.",
+    },
+    "lesson.unavailable": {
+        Language.EN: "Today's lesson isn't ready yet. Please try again later.",
+        Language.YO: "Ẹ̀kọ́ òní kò tíì ṣetán. Jọ̀wọ́ gbìyànjú lẹ́ẹ̀kan sí i ní àsìkò mìíràn.",
+        Language.PCM: "Today lesson never ready. Abeg try again later.",
+    },
+    "lesson.not_in_circle": {
+        Language.EN: "Lessons come through your circle, and you're not in one yet.",
+        Language.YO: "Inú ẹgbẹ́ rẹ ni ẹ̀kọ́ ti ń wá, o kò sì tíì wà nínú ẹgbẹ́ kankan.",
+        Language.PCM: "Lesson dey come through your circle, and you never dey any circle.",
+    },
+    # Answering questions (spec section 7.3)
+    "question.header": {Language.EN: "Question {number} of {total}", Language.YO: "Ìbéèrè {number} nínú {total}",
+                        Language.PCM: "Question {number} of {total}"},
+    "question.easier": {
+        Language.EN: "Here's an easier question on the same idea:",
+        Language.YO: "Èyí ni ìbéèrè tí ó rọrùn jù lórí èrò kan náà:",
+        Language.PCM: "Try this easier question on the same idea:",
+    },
+    "question.correct": {Language.EN: "✅ Correct!", Language.YO: "✅ O tọ̀nà!", Language.PCM: "✅ Correct!"},
+    "question.wrong": {
+        Language.EN: "❌ Not quite. The answer is {option}: {answer}",
+        Language.YO: "❌ Kò tọ̀nà. Ìdáhùn náà ni {option}: {answer}",
+        Language.PCM: "❌ E no correct. The answer na {option}: {answer}",
+    },
+    "question.done": {
+        Language.EN: "🎉 You've answered today's questions. Your circle will see that you answered, but not your "
+                     "score unless you turn on /share_scores.",
+        Language.YO: "🎉 O ti dáhùn àwọn ìbéèrè òní. Ẹgbẹ́ rẹ máa rí pé o dáhùn, ṣùgbọ́n wọn kò ní rí máàkì rẹ "
+                     "àyàfi tí o bá tan /share_scores.",
+        Language.PCM: "🎉 You don answer today questions. Your circle go see say you answer, but dem no go see your "
+                      "score unless you on /share_scores.",
+    },
+    "question.already_answered": {
+        Language.EN: "You already answered that question.",
+        Language.YO: "O ti dáhùn ìbéèrè yẹn tẹ́lẹ̀.",
+        Language.PCM: "You don already answer that question.",
+    },
+    "question.all_answered": {
+        Language.EN: "You've already answered all of this lesson's questions.",
+        Language.YO: "O ti dáhùn gbogbo ìbéèrè ẹ̀kọ́ yìí tẹ́lẹ̀.",
+        Language.PCM: "You don already answer all the questions for this lesson.",
     },
 }
 

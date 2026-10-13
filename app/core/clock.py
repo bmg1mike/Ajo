@@ -1,9 +1,14 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.models import ClockState
+
+
+def virtual_day(moment: datetime) -> date:
+    """The UTC calendar day of a virtual timestamp. SQLite returns stored timestamps without a zone, in UTC."""
+    return (moment.astimezone(UTC) if moment.tzinfo else moment).date()
 
 
 def initialize(session: Session) -> None:

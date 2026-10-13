@@ -22,7 +22,7 @@ from app.core.embeddings import Embedder
 from app.core.i18n import t
 from app.core.privacy import redact_contact_details, redact_learner
 from app.core.replies import Reply
-from app.core.retrieval import TOP_K, RetrievedChunk, retrieve
+from app.core.retrieval import TOP_K, ChunkRef, RetrievedChunk, retrieve
 from app.llm import prompts
 from app.llm.client import LLMClient, LLMError, LLMUnavailable
 from app.models import Chunk, CircleMember, FeedEvent, FeedType, Language, Learner, QALog, Source, SyllabusTopic
@@ -136,17 +136,17 @@ class QAService:
         output = _parse_answer(self._complete(messages, json_output=True))
         if not output.answerable:
             raise _Rejected(FallbackReason.NOT_ANSWERABLE)
-        answer = _LEAKED_LABELS.sub("", output.answer).strip()
+        answer = strip_leaked_labels(output.answer)
         if not answer:
             raise _Rejected(FallbackReason.SCHEMA_MISMATCH)
         if len(answer.split()) > prompts.QA_MAX_WORDS:
             raise _Rejected(FallbackReason.ANSWER_TOO_LONG)
         cited = _resolve_citations(output.cited_chunk_ids, retrieved)
 
-        verdict = _VERDICT.fullmatch(self._complete(prompts.claim_check_messages(answer, cited), json_output=False))
+        verdict = parse_verdict(self._complete(prompts.claim_check_messages(answer, cited), json_output=False))
         if verdict is None:
             raise _Rejected(FallbackReason.CLAIM_CHECK_ERROR)
-        if verdict.group(1).lower() != "yes":
+        if not verdict:
             raise _Rejected(FallbackReason.UNSUPPORTED_CLAIMS)
         return answer, cited
 
@@ -159,7 +159,8 @@ class QAService:
             raise _Rejected(FallbackReason.LLM_ERROR) from None
 
 
-def _parse_answer(content: str) -> _AnswerSchema:
+def parse_json_object(content: str) -> dict | None:
+    """The JSON object in a model reply, tolerating code fences and surrounding prose; None if there is none."""
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", content.strip())
     try:
         data = json.loads(text)
@@ -169,7 +170,41 @@ def _parse_answer(content: str) -> _AnswerSchema:
             data = json.loads(text[start:end + 1]) if 0 <= start < end else None
         except json.JSONDecodeError:
             data = None
-    if not isinstance(data, dict):
+    return data if isinstance(data, dict) else None
+
+
+def strip_leaked_labels(text: str) -> str:
+    return _LEAKED_LABELS.sub("", text).strip()
+
+
+def parse_verdict(content: str) -> bool | None:
+    """True for a bare "yes", False for a bare "no", None for anything else (a qualified reply is malformed)."""
+    verdict = _VERDICT.fullmatch(content)
+    return None if verdict is None else verdict.group(1).lower() == "yes"
+
+
+def resolve_labels[T: ChunkRef](cited_ids: list[str], passages: list[T]) -> list[T] | None:
+    """Map the model's labels (C1..Cn, or full chunk IDs) onto the passages it was shown, without duplicates.
+
+    None if any label is not one of them; an empty list if nothing was cited.
+    """
+    by_key: dict[str, T] = {}
+    for index, chunk in enumerate(passages):
+        by_key[prompts.label(index).lower()] = chunk
+        by_key[str(chunk.id)] = chunk
+    resolved: list[T] = []
+    for raw in cited_ids:
+        chunk = by_key.get(raw.strip().strip("[]").lower())
+        if chunk is None:
+            return None
+        if chunk not in resolved:
+            resolved.append(chunk)
+    return resolved
+
+
+def _parse_answer(content: str) -> _AnswerSchema:
+    data = parse_json_object(content)
+    if data is None:
         raise _Rejected(FallbackReason.INVALID_JSON)
     try:
         return _AnswerSchema.model_validate(data)
@@ -178,35 +213,31 @@ def _parse_answer(content: str) -> _AnswerSchema:
 
 
 def _resolve_citations(cited_ids: list[str], retrieved: list[RetrievedChunk]) -> list[RetrievedChunk]:
-    """Map the model's labels (C1..Cn, or full chunk IDs) onto the retrieved set; reject anything else."""
-    by_key: dict[str, RetrievedChunk] = {}
-    for index, chunk in enumerate(retrieved):
-        by_key[prompts.label(index).lower()] = chunk
-        by_key[str(chunk.id)] = chunk
-    resolved: list[RetrievedChunk] = []
-    for raw in cited_ids:
-        chunk = by_key.get(raw.strip().strip("[]").lower())
-        if chunk is None:
-            raise _Rejected(FallbackReason.CITATION_OUTSIDE_RETRIEVED)
-        if chunk not in resolved:
-            resolved.append(chunk)
+    resolved = resolve_labels(cited_ids, retrieved)
+    if resolved is None:
+        raise _Rejected(FallbackReason.CITATION_OUTSIDE_RETRIEVED)
     if not resolved:
         raise _Rejected(FallbackReason.NO_CITATIONS)
     return resolved
 
 
-def _answer_reply(learner: Learner, answer: str, cited: list[RetrievedChunk]) -> Reply:
-    language = learner.language
-    distinct: dict[str, RetrievedChunk] = {}
+def source_footer(language: Language | str, cited: list[ChunkRef]) -> tuple[str, list[Button]]:
+    """One "Source:" line per distinct citation, and a Show source button for each."""
+    distinct: dict[str, ChunkRef] = {}
     for chunk in cited:
         distinct.setdefault(chunk.citation, chunk)
-    lines = [t("qa.source_line", language, citation=citation) for citation in distinct]
+    lines = "\n".join(t("qa.source_line", language, citation=citation) for citation in distinct)
     if len(distinct) == 1:
         buttons = [Button(t("qa.show_source", language), f"{SHOW_SOURCE}{next(iter(distinct.values())).id}")]
     else:
         buttons = [Button(t("qa.show_source_n", language, number=number), f"{SHOW_SOURCE}{chunk.id}")
                    for number, chunk in enumerate(distinct.values(), start=1)]
-    return Reply(f"{answer}\n\n" + "\n".join(lines), buttons)
+    return lines, buttons
+
+
+def _answer_reply(learner: Learner, answer: str, cited: list[RetrievedChunk]) -> Reply:
+    lines, buttons = source_footer(learner.language, cited)
+    return Reply(f"{answer}\n\n{lines}", buttons)
 
 
 def _fallback_reply(learner: Learner, log_id: UUID) -> Reply:

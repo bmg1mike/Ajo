@@ -1,6 +1,6 @@
 """Channel-agnostic message routing. Adapters turn platform updates into `Inbound` and send back the replies.
 
-Commands: /start, /ask, /language, /share_scores, /delete_me and /help. Any other text from
+Commands: /start, /lesson, /ask, /language, /share_scores, /delete_me and /help. Any other text from
 an onboarded learner is a question for QA (spec section 7.4). Raw channel user IDs are hashed
 on arrival and never stored.
 """
@@ -12,7 +12,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core import account, onboarding, qa
+from app.core import account, grading, lessons, onboarding, qa
 from app.core.clock import Clock
 from app.core.i18n import t
 from app.core.privacy import channel_hash
@@ -20,7 +20,7 @@ from app.core.replies import Reply
 from app.models import Channel, Language, Learner, Onboarding
 
 # Spec section 10.2 commands from later milestones; until they exist they say so rather than act as questions.
-COMING_SOON = frozenset({"lesson", "progress", "pack"})
+COMING_SOON = frozenset({"progress", "pack"})
 
 _COMMAND = re.compile(r"/([A-Za-z0-9_]{1,32})(?:@\w+)?(?:\s+(.*))?", re.DOTALL)
 
@@ -47,9 +47,9 @@ def parse_command(text: str) -> tuple[str | None, str]:
 
 
 class Conversation:
-    def __init__(self, sessions: sessionmaker[Session], clock: Clock, qa_service: qa.QAService, *,
-                 salt: str) -> None:
-        self.sessions, self.clock, self.qa, self.salt = sessions, clock, qa_service, salt
+    def __init__(self, sessions: sessionmaker[Session], clock: Clock, qa_service: qa.QAService,
+                 lesson_service: lessons.LessonService, *, salt: str) -> None:
+        self.sessions, self.clock, self.qa, self.lessons, self.salt = sessions, clock, qa_service, lesson_service, salt
 
     def handle(self, inbound: Inbound) -> list[Reply]:
         """Process one message or button tap in a single transaction. Blocks on LLM calls."""
@@ -84,6 +84,8 @@ class Conversation:
             return [self.qa.ask(session, learner, argument).reply]
         if command == "ask":
             return [self.qa.ask(session, learner, argument).reply] if argument else [Reply(t("ask.usage", language))]
+        if command == "lesson":
+            return self.lessons.today(session, learner, now)
         if command == "language":
             return [account.language_menu(learner)]
         if command == "share_scores":
@@ -113,6 +115,8 @@ class Conversation:
             return account.set_language(learner, payload.removeprefix(account.SET_LANGUAGE))
         if payload in (account.SHARE_SCORES, account.KEEP_SCORES_PRIVATE):
             return [account.set_share_scores(learner, payload == account.SHARE_SCORES)]
+        if payload.startswith(lessons.PREFIX):
+            return self._lesson_button(session, learner, payload, now)
         if payload == qa.DISMISS:
             return [qa.dismiss(learner)]
         for prefix in (qa.SHOW_SOURCE, qa.ASK_CIRCLE):
@@ -124,4 +128,15 @@ class Conversation:
                 if prefix == qa.SHOW_SOURCE:
                     return [qa.show_source(session, learner, target)]
                 return [qa.ask_circle(session, learner, target, now)]
+        return [Reply(t("button.expired", learner.language))]
+
+    def _lesson_button(self, session: Session, learner: Learner, payload: str, now: datetime) -> list[Reply]:
+        try:
+            if payload.startswith(lessons.START_QUESTIONS):
+                return grading.start(session, self.lessons, learner, UUID(payload.removeprefix(lessons.START_QUESTIONS)))
+            if payload.startswith(lessons.ANSWER):
+                question_id, option = payload.removeprefix(lessons.ANSWER).rsplit(":", 1)
+                return grading.answer(session, self.lessons, learner, UUID(question_id), option, now)
+        except ValueError:
+            pass
         return [Reply(t("button.expired", learner.language))]

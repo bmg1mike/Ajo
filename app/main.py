@@ -11,6 +11,7 @@ from app.config import Settings
 from app.core.clock import Clock, initialize
 from app.core.conversation import Conversation
 from app.core.embeddings import E5Embedder, LazyEmbedder
+from app.core.lessons import LessonService
 from app.core.qa import QAService
 from app.db import build_engine, session_factory
 from app.llm.client import LLMClient
@@ -34,10 +35,12 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
             application.state.clock = Clock(application.state.sessions)
             application.state.adapters = AdapterRegistry()
             llm = LLMClient.from_settings(configured, application.state.sessions, application.state.clock)
-            application.state.qa = QAService(LazyEmbedder(lambda: E5Embedder(configured.embed_model)), llm,
-                                             application.state.clock, min_score=configured.retrieval_min_score)
+            embedder = LazyEmbedder(lambda: E5Embedder(configured.embed_model))  # shared: one model in memory
+            application.state.qa = QAService(embedder, llm, application.state.clock,
+                                             min_score=configured.retrieval_min_score)
+            application.state.lessons = LessonService(embedder, llm, application.state.clock)
             application.state.conversation = Conversation(application.state.sessions, application.state.clock,
-                                                          application.state.qa,
+                                                          application.state.qa, application.state.lessons,
                                                           salt=configured.hash_salt.get_secret_value())
             with application.state.sessions() as session:
                 initialize(session)

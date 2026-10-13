@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy import delete, func, select
 
 from app.core import embeddings
-from app.models import Chunk, Circle, Goal, Lesson, Question, Source, SyllabusTopic
+from app.models import Chunk, Circle, Goal, Lesson, PregeneratedLesson, Question, Source, SyllabusTopic
 from ingest import ingest
 from ingest.catalog import load_catalog, load_syllabus
 from ingest.chunking import chunk_section
@@ -69,7 +69,7 @@ def build(paths: dict[str, Path]):
 def clean_corpus(sessions):
     def wipe():
         with sessions.begin() as session:
-            for model in (Question, Lesson, Circle, Chunk, Source, SyllabusTopic, Goal):
+            for model in (Question, Lesson, PregeneratedLesson, Circle, Chunk, Source, SyllabusTopic, Goal):
                 session.execute(delete(model))
     wipe()
     yield
@@ -314,6 +314,23 @@ def test_persist_refuses_to_remove_cited_chunks(sessions, clean_corpus, tmp_path
         persist(session, smaller, "syllabus.json")
     with sessions() as session:  # the failed run rolled back
         assert session.scalar(select(func.count()).select_from(Chunk)) == len(corpus.chunks)
+
+
+def test_persist_drops_pregenerated_lessons_citing_removed_chunks(sessions, clean_corpus, tmp_path):
+    corpus = build(write_inputs(tmp_path / "a"))
+    smaller = build(write_inputs(tmp_path / "b", sections=["1.2 Kidneys Filter Blood"]))
+    kept, removed = smaller.chunks[0].id, (set(c.id for c in corpus.chunks) - {c.id for c in smaller.chunks}).pop()
+    now = datetime(2026, 1, 1, tzinfo=UTC)
+    with sessions.begin() as session:
+        persist(session, corpus, "syllabus.json")
+        first, second = session.scalars(select(SyllabusTopic).order_by(SyllabusTopic.order_index)).all()[:2]
+        session.add_all([PregeneratedLesson(topic_id=first.id, content={}, cited_chunk_ids=[removed], created_at=now),
+                         PregeneratedLesson(topic_id=second.id, content={}, cited_chunk_ids=[kept], created_at=now)])
+    with sessions.begin() as session:
+        stats = persist(session, smaller, "syllabus.json")
+    assert stats.pregenerated_removed == 1
+    with sessions() as session:
+        assert [row.cited_chunk_ids for row in session.scalars(select(PregeneratedLesson))] == [[kept]]
 
 
 def test_persist_rejects_a_second_goal_without_touching_the_first(sessions, clean_corpus, tmp_path):
