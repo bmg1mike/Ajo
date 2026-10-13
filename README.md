@@ -34,11 +34,11 @@ A database-backed virtual clock lets admin commands such as `/simulate_day` and 
 
 ## Tech stack
 
-Python 3.12, FastAPI, SQLAlchemy and Alembic, PostgreSQL 16 with pgvector, and local `multilingual-e5-small` embeddings. Answers come from any OpenAI-compatible LLM; the POC is configured for OpenAI GPT (Gemini and Groq also work). The plan also uses python-telegram-bot, faster-whisper or Groq Whisper for speech-to-text, Meta MMS-TTS for speech output, and the Africa's Talking USSD sandbox.
+Python 3.12, FastAPI, SQLAlchemy and Alembic, PostgreSQL 16 with pgvector, and local `multilingual-e5-small` embeddings. Answers come from any OpenAI-compatible LLM; the POC is configured for OpenAI GPT (Gemini and Groq also work). Learners use the bot through python-telegram-bot. The plan also uses faster-whisper or Groq Whisper for speech-to-text, Meta MMS-TTS for speech output, and the Africa's Talking USSD sandbox.
 
 ## Status
 
-The **foundation** is complete: configuration, the database schema and migrations, the virtual clock, privacy helpers (salted identity hashing and learner deletion), and the adapter registry. **Corpus ingestion** is complete too: about 200 pages of OpenStax Biology, chunked, embedded locally and mapped to 10 JAMB topics. **Cited question answering** is complete: retrieval, a citation-enforced answer pipeline with a claim-support check, the library fallback with an "ask my circle" option, and a 20-question evaluation set. The next steps are Telegram onboarding, lessons, simulation, nudges and payouts. See [plan.md](plan.md) for the milestone checklist.
+The **foundation** is complete: configuration, the database schema and migrations, the virtual clock, privacy helpers (salted identity hashing and learner deletion), and the adapter registry. **Corpus ingestion** is complete too: about 200 pages of OpenStax Biology, chunked, embedded locally and mapped to 10 JAMB topics. **Cited question answering** is complete: retrieval, a citation-enforced answer pipeline with a claim-support check, the library fallback with an "ask my circle" option, and a 20-question evaluation set. **Telegram onboarding** works: consent, language, first name, goal, and a place in the demo circle. After that, learners can ask questions, change their language, opt in to sharing scores and delete their data. Yoruba and Pidgin menu text is drafted but shows only after native-speaker review. The next steps are lessons, simulation, nudges and payouts. See [plan.md](plan.md) for the milestone checklist.
 
 ## Getting started
 
@@ -66,6 +66,10 @@ To answer questions, set `LLM_ENABLED=true`, `LLM_BASE_URL=https://api.openai.co
 uv run python -m app.core.qa_eval                   # 20 questions; exits non-zero if acceptance fails
 uv run python -m app.core.qa_eval --retrieval-only  # tune RETRIEVAL_MIN_SCORE without calling the LLM
 ```
+
+To run the Telegram bot, create a bot with [@BotFather](https://t.me/BotFather) and set `TELEGRAM_ENABLED=true` and `TELEGRAM_BOT_TOKEN` in `.env`. Then run the corpus ingestion above and start the server. The bot long-polls, so it needs no public URL. Send `/start` to the bot in a private chat.
+
+Yoruba and Pidgin menu text waits for a native speaker. Print a review sheet with `uv run python -m app.core.i18n --review yo` (or `pcm`). Once the sheet is signed off, add the language to `REVIEWED` in `app/core/i18n.py`.
 
 Integrations (Telegram, LLM, speech-to-text) are off by default and are switched on with flags in `.env`. Each one asks for its credentials only when it is enabled. Never commit `.env`.
 

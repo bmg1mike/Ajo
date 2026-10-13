@@ -123,3 +123,30 @@ def test_simulated_learners_cannot_have_chat_ids(sessions, clock):
         with sessions.begin() as session:
             session.add(Learner(channel=Channel.WEB, channel_user_hash=uuid4().hex, first_name="Synthetic",
                                 channel_chat_id="forbidden", is_simulated=True, created_at=clock.now()))
+
+
+def test_deletion_matches_identifiers_as_whole_words(sessions, clock):
+    now = clock.now()
+    with sessions.begin() as session:
+        goal = Goal(code=f"test_{uuid4().hex}", title="Biology", syllabus_ref="demo.json")
+        session.add(goal)
+        session.flush()
+        ada = Learner(channel=Channel.TELEGRAM, channel_user_hash=channel_hash(Channel.TELEGRAM, uuid4().hex, SALT),
+                      first_name="Ada", goal_id=goal.id, created_at=now)
+        other = Learner(channel=Channel.WEB, channel_user_hash=channel_hash(Channel.WEB, uuid4().hex, SALT),
+                        first_name="Bola", goal_id=goal.id, created_at=now)
+        circle = Circle(goal_id=goal.id, name="Demo", start_date=now.date(), created_at=now)
+        session.add_all([ada, other, circle])
+        session.flush()
+        kept = FeedEvent(circle_id=circle.id, type=FeedType.QUESTION, actor_learner_id=other.id,
+                         payload={"question": "What is adaptation?"}, created_at=now)
+        mentions = FeedEvent(circle_id=circle.id, type=FeedType.QUESTION, actor_learner_id=other.id,
+                             payload={"question": "Can ada explain osmosis?"}, created_at=now)
+        session.add_all([kept, mentions])
+        session.flush()
+        ids = ada.id, kept.id, mentions.id
+    with sessions.begin() as session:
+        assert delete_learner(session, ids[0], confirmed=True)
+    with sessions() as session:
+        assert session.get(FeedEvent, ids[1]) is not None
+        assert session.get(FeedEvent, ids[2]) is None

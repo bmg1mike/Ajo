@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
+import httpx
 import pytest
 from alembic import command
 from alembic.config import Config
@@ -10,6 +11,8 @@ from sqlalchemy.engine import make_url
 
 from app.core.clock import Clock
 from app.db import build_engine, session_factory
+from app.llm.client import LLMClient
+from tests.fakes import FakeLLM
 
 
 @pytest.fixture(scope="session", params=["sqlite", "postgres"])
@@ -54,3 +57,20 @@ def sessions(engine):
 @pytest.fixture
 def clock(sessions):
     return Clock(sessions)
+
+
+@pytest.fixture
+def make_client(sessions, clock):
+    clients = []
+
+    def make(fake: FakeLLM | None = None, **options) -> LLMClient:
+        defaults = dict(sessions=sessions, clock=clock, base_url="https://llm.example/v1/", api_key="test-key",
+                        model="test-model", enabled=True, cache=False, transport=httpx.MockTransport(fake or FakeLLM()),
+                        sleep=options.pop("sleep", lambda seconds: None))
+        client = LLMClient(**(defaults | options))
+        clients.append(client)
+        return client
+
+    yield make
+    for client in clients:
+        client.close()

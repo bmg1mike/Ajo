@@ -1,4 +1,5 @@
 import json
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -22,9 +23,8 @@ from app.llm.client import LLMClient, LLMError, LLMUnavailable
 from app.main import create_app
 from app.models import (
     Channel, Chunk, Circle, CircleMember, FeedEvent, FeedType, Goal, Language, Learner, LLMCache, QALog, Source,
-    SyllabusTopic,
 )
-from tests.fakes import FakeEmbedder
+from tests.fakes import FakeEmbedder, FakeLLM, add_goal_with_chunks, chat
 
 ROOT = Path(__file__).parents[1]
 SALT = "synthetic-test-salt-with-32-characters"
@@ -35,45 +35,6 @@ EMBEDDER = FakeEmbedder()
 MIN_SCORE = 0.3  # bag-of-words similarities are lower than e5's
 
 
-def chat(content: str, status: int = 200, **headers) -> httpx.Response:
-    return httpx.Response(status, json={"choices": [{"message": {"role": "assistant", "content": content}}]},
-                          headers=headers)
-
-
-class FakeLLM:
-    """Scripted chat completions behind the real client; records every request body."""
-
-    def __init__(self, *responses: httpx.Response | Exception) -> None:
-        self.responses = list(responses)
-        self.requests: list[dict] = []
-
-    def __call__(self, request: httpx.Request) -> httpx.Response:
-        self.requests.append(json.loads(request.content))
-        if not self.responses:
-            raise AssertionError("unexpected LLM call")
-        response = self.responses.pop(0)
-        if isinstance(response, Exception):
-            raise response
-        return response
-
-
-@pytest.fixture
-def make_client(sessions, clock):
-    clients = []
-
-    def make(fake: FakeLLM | None = None, **options) -> LLMClient:
-        defaults = dict(sessions=sessions, clock=clock, base_url="https://llm.example/v1/", api_key="test-key",
-                        model="test-model", enabled=True, cache=False, transport=httpx.MockTransport(fake or FakeLLM()),
-                        sleep=options.pop("sleep", lambda seconds: None))
-        client = LLMClient(**(defaults | options))
-        clients.append(client)
-        return client
-
-    yield make
-    for client in clients:
-        client.close()
-
-
 @dataclass
 class Corpus:
     goal_id: UUID
@@ -81,23 +42,6 @@ class Corpus:
     leaf: Chunk
     kidney: Chunk
     other_goal_chunk: Chunk
-
-
-def add_goal_with_chunks(session, texts: list[str]) -> tuple[Goal, list[Chunk]]:
-    goal = Goal(code=f"test_{uuid4().hex}", title="Synthetic Biology", syllabus_ref="synthetic.json")
-    source = Source(title="Synthetic Book", publisher="Test Press", license="CC0", url="https://example.org",
-                    file_path="book.pdf")
-    session.add_all([goal, source])
-    session.flush()
-    topic = SyllabusTopic(goal_id=goal.id, order_index=1, title="Living things", objectives="Synthetic")
-    session.add(topic)
-    session.flush()
-    chunks = [Chunk(source_id=source.id, section=f"1.{index} Section", page=10 + index, text=text,
-                    embedding=EMBEDDER.embed_passages([text])[0], syllabus_topic_id=topic.id)
-              for index, text in enumerate(texts, start=1)]
-    session.add_all(chunks)
-    session.flush()
-    return goal, chunks
 
 
 @pytest.fixture
@@ -369,6 +313,27 @@ def test_llm_requests_carry_language_and_level_but_no_learner_identity(sessions,
     with sessions() as session:
         assert (session.scalar(select(QALog.question_text).where(QALog.learner_id == learner.id))
                 == redact_contact_details(question))
+
+
+@pytest.mark.parametrize("name,intro,expected", [
+    ("A", "My name is A.", "My name is [redacted]."),  # a one-letter name stored by any channel
+    ("Ṣadé", unicodedata.normalize("NFD", "Ṣadé here:"), "[redacted] here:"),  # typed with combining marks
+    ("Ẹ́mì", unicodedata.normalize("NFD", "I'm Ẹ́MÌ."), "I'm [redacted]."),  # no precomposed form, other case
+])
+def test_names_of_any_length_or_unicode_form_never_reach_the_llm(sessions, clock, corpus, make_client, name,
+                                                                  intro, expected):
+    with sessions.begin() as session:
+        learner = session.get(Learner, corpus.learner.id)
+        learner.first_name = name
+    fake = FakeLLM(chat(answer_json("C1")), chat("yes"))
+    ask(sessions, qa_service(make_client(fake), clock), learner, f"{intro} {LEAF_QUESTION}")
+    user_prompt = fake.requests[0]["messages"][1]["content"]
+    assert f"<question>\n{expected} {LEAF_QUESTION}\n</question>" in user_prompt
+    payload = json.dumps(fake.requests, ensure_ascii=False)
+    if len(name) > 1:  # a lone "A" also occurs inside ordinary words; the exact prompt check above covers it
+        for variant in (name, name.upper(), name.lower()):
+            for form in ("NFC", "NFD"):
+                assert unicodedata.normalize(form, variant) not in payload
 
 
 @pytest.mark.parametrize("phone", ["+2348031234567", "+234 803 123 4567", "08031234567", "0803-123-4567",

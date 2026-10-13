@@ -34,6 +34,13 @@ class FeedType(StrEnum):
     NUDGE_SENT = "nudge_sent"
     PAYOUT = "payout"
     QUESTION = "question"  # a learner chose to post an unanswered question to the circle
+    MEMBER_LEFT = "member_left"  # anonymous: "A member left the circle." after /delete_me
+
+
+class OnboardingStep(StrEnum):
+    LANGUAGE = "language"
+    NAME = "name"
+    GOAL = "goal"
 
 
 def enum_type(enum, name):
@@ -96,7 +103,26 @@ class Learner(Identified, Base):
     is_simulated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     share_scores: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     difficulty: Mapped[int] = mapped_column(Integer, default=2, server_default="2")
+    # When the learner agreed to the consent message; null for simulated personas.
+    consented_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
+
+
+class Onboarding(Base):
+    """A channel user who has consented but not yet finished onboarding.
+
+    Nothing is stored before consent. The row is keyed by the salted channel hash and is
+    removed when the learner row is created, or by /delete_me.
+    """
+    __tablename__ = "onboarding"
+    channel_user_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    channel: Mapped[Channel] = mapped_column(enum_type(Channel, "onboarding_channel"))
+    step: Mapped[OnboardingStep] = mapped_column(enum_type(OnboardingStep, "onboarding_step"))
+    language: Mapped[Language] = mapped_column(enum_type(Language, "onboarding_language"), default=Language.EN,
+                                               server_default="en")
+    first_name: Mapped[str | None] = mapped_column(Text)
+    consented_at: Mapped[datetime] = mapped_column(TIMESTAMP)
+    updated_at: Mapped[datetime] = mapped_column(TIMESTAMP)
 
 
 class Circle(Identified, Base):

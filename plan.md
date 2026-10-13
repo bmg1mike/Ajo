@@ -69,14 +69,16 @@ Depends on milestone 1.
 
 Depends on the foundation and milestone 2 for free-text QA.
 
-- [ ] Implement async Telegram long polling and adapter delivery methods.
-- [ ] Add `/start`, consent, language selection, first-name collection, JAMB Biology selection, and demo-circle enrollment.
-- [ ] Implement fixed UI strings in `app/core/i18n.py` and arrange native-speaker review.
-- [ ] Support English plus a reviewed local language for the POC; prepare `en`, `yo`, and `pcm` language handling as specified.
-- [ ] Route `/ask` and ordinary free text through QA. Add `/language`, `/share_scores`, and confirmed `/delete_me`.
-- [ ] Ensure learners start at difficulty level 2 without a placement test or access restrictions.
+- [x] Implement async Telegram long polling and adapter delivery methods.
+- [x] Add `/start`, consent, language selection, first-name collection, JAMB Biology selection, and demo-circle enrollment.
+- [ ] Implement fixed UI strings in `app/core/i18n.py` and arrange native-speaker review. *(Strings are implemented; the Yoruba and Pidgin drafts await review.)*
+- [ ] Support English plus a reviewed local language for the POC; prepare `en`, `yo`, and `pcm` language handling as specified. *(Handling for all three is prepared; no local language has been reviewed yet.)*
+- [x] Route `/ask` and ordinary free text through QA. Add `/language`, `/share_scores`, and confirmed `/delete_me`.
+- [x] Ensure learners start at difficulty level 2 without a placement test or access restrictions.
 
 **Completion check:** A Telegram test account completes consent and onboarding, joins the circle, receives cited QA or fallback, and can delete its data.
+
+**Validation:** `tests/test_telegram.py` runs python-telegram-bot's real polling loop against a fake Bot API, on SQLite and PostgreSQL. In that test a synthetic account consents, chooses a language, gives a first name, picks the goal, joins the demo circle, gets a cited answer and a fallback, and deletes its data. `tests/test_onboarding.py` covers the core flow. Nothing is stored before consent, and stale, repeated or out-of-order taps keep the current step. It also checks name validation (including decomposed Yoruba tone marks), level 2 with no placement test, the account commands, QA routing, and deletion during and after onboarding. Two Postgres-only tests race the final onboarding tap and the first demo-circle insert and check that each produces one row. **Still open:** the manual check with a real Telegram account and bot token, and native-speaker review of the Yoruba and Pidgin drafts (`uv run python -m app.core.i18n --review yo` prints the review sheet). Until a language is added to `i18n.REVIEWED`, its learners see English menus while their QA answers are generated in their language, and the bot says so when they pick it. Implementation notes: onboarding progress is kept in an `onboarding` table keyed by the salted channel hash. It is created on "I agree" and deleted when the learner row is created, so circle code only ever sees fully onboarded learners. The demo circle has an ID derived from the goal code (`circles.demo_circle`), and milestone 5's `/seed_demo` should seed the personas into it. `/delete_me` records an anonymous `member_left` feed event, with no actor and an empty payload, for milestone 5's feed to render. First names need at least two letters (counted as letters, so a letter plus a combining tone mark is still one). QA redaction NFC-normalizes the question and the learner's identifiers and redacts identifiers of any length, so a name typed with combining marks, in another case, or one letter long never reaches the LLM. Tests inspect the recorded LLM payloads. The deletion scan now matches identifiers as whole words, so a learner named "Ada" no longer deletes other members' rows that mention "adaptation". Updates are processed one at a time (the PTB default), so one slow LLM call delays other users; this is acceptable for the demo. The project uses python-telegram-bot 22.8; the spec names v21, and v22 keeps the same async API.
 
 ## Milestone 4: Daily Lessons and Grading
 

@@ -4,7 +4,7 @@
 
 Ajo is a Python FastAPI scaffold for a learning-circle proof of concept. `app/main.py` defines the application, `GET /`, and `GET /health`; root `main.py` re-exports the same app for compatibility. `pyproject.toml` declares Python 3.12+ and dependencies; `uv.lock` records dependency resolution. `README.md` covers startup and deployment. `spec.md` defines the intended architecture, privacy rules, and acceptance criteria.
 
-The package layout, settings, ORM models, Alembic migrations, virtual clock, adapter registry, and privacy helpers are implemented; feature milestones in `plan.md` remain planned. As features are added, place business logic in `app/core/`, channel integrations in `app/adapters/`, ingestion tools in `ingest/`, corpus and curated data in `data/`, simulator assets in `web/`, and tests in `tests/`. Keep adapters thin and independent of core logic.
+The package layout, settings, ORM models, Alembic migrations, virtual clock, adapter registry, privacy helpers, corpus ingestion, cited QA, and Telegram onboarding (`app/core/conversation.py`, `app/adapters/telegram_bot.py`) are implemented. Later milestones in `plan.md` remain planned. As features are added, place business logic in `app/core/`, channel integrations in `app/adapters/`, ingestion tools in `ingest/`, corpus and curated data in `data/`, simulator assets in `web/`, and tests in `tests/`. Keep adapters thin and independent of core logic.
 
 ## Build, Test, and Development Commands
 

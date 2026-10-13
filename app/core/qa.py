@@ -21,6 +21,7 @@ from app.core.clock import Clock
 from app.core.embeddings import Embedder
 from app.core.i18n import t
 from app.core.privacy import redact_contact_details, redact_learner
+from app.core.replies import Reply
 from app.core.retrieval import TOP_K, RetrievedChunk, retrieve
 from app.llm import prompts
 from app.llm.client import LLMClient, LLMError, LLMUnavailable
@@ -61,12 +62,6 @@ class FallbackReason(StrEnum):
     CITATION_OUTSIDE_RETRIEVED = "citation_outside_retrieved"
     CLAIM_CHECK_ERROR = "claim_check_error"
     UNSUPPORTED_CLAIMS = "unsupported_claims"
-
-
-@dataclass(frozen=True)
-class Reply:
-    text: str
-    buttons: list[Button] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

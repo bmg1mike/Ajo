@@ -6,8 +6,10 @@ from fastapi import FastAPI
 from sqlalchemy import text
 
 from app.adapters.base import AdapterRegistry
+from app.adapters.telegram_bot import telegram_polling
 from app.config import Settings
 from app.core.clock import Clock, initialize
+from app.core.conversation import Conversation
 from app.core.embeddings import E5Embedder, LazyEmbedder
 from app.core.qa import QAService
 from app.db import build_engine, session_factory
@@ -18,7 +20,9 @@ from app.llm.client import LLMClient
 BackgroundService = Callable[[FastAPI], AsyncContextManager[None]]
 
 
-def create_app(settings: Settings | None = None, *, services: Sequence[BackgroundService] = ()) -> FastAPI:
+def create_app(settings: Settings | None = None, *, services: Sequence[BackgroundService] = (),
+               telegram: BackgroundService = telegram_polling) -> FastAPI:
+    """`telegram` runs only when TELEGRAM_ENABLED is set; tests swap in a fake Bot API through it."""
     @asynccontextmanager
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         configured = settings or Settings()
@@ -32,11 +36,16 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
             llm = LLMClient.from_settings(configured, application.state.sessions, application.state.clock)
             application.state.qa = QAService(LazyEmbedder(lambda: E5Embedder(configured.embed_model)), llm,
                                              application.state.clock, min_score=configured.retrieval_min_score)
+            application.state.conversation = Conversation(application.state.sessions, application.state.clock,
+                                                          application.state.qa,
+                                                          salt=configured.hash_salt.get_secret_value())
             with application.state.sessions() as session:
                 initialize(session)
             async with AsyncExitStack() as stack:
                 for service in services:
                     await stack.enter_async_context(service(application))
+                if configured.telegram_enabled:
+                    await stack.enter_async_context(telegram(application))
                 yield
         finally:
             if llm is not None:
