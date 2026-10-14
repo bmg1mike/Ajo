@@ -312,7 +312,8 @@ def test_commands_for_onboarded_learners(sessions, goal_id, make_conversation):
     assert learner_for(sessions, user).share_scores is False
 
     assert user.send("/help")[0].text == t("help")
-    assert user.send("/progress")[0].text == t("command.coming_soon")
+    assert user.send("/progress")[0].text == t("progress.no_lessons")  # milestone 7, before any lesson
+    assert user.send("/pack")[0].text == t("pack.empty")
     assert [reply.text for reply in user.send("/dance")] == [t("command.unknown"), t("help")]
     assert user.send("/ask")[0].text == t("ask.usage")
     assert user.send(None)[0].text == t("message.text_only")

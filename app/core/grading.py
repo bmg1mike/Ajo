@@ -64,7 +64,7 @@ def next_question(session: Session, learner: Learner, lesson: Lesson) -> Questio
     return None
 
 
-def _shown(question: Question, language: Language) -> dict:
+def shown_question(question: Question, language: Language) -> dict:
     """The question in the learner's language when a translation is stored, else English."""
     return (question.translations or {}).get(Language(language).value) or {
         "stem": question.stem, "options": question.options, "explanation": question.explanation}
@@ -72,7 +72,7 @@ def _shown(question: Question, language: Language) -> dict:
 
 def question_reply(session: Session, learner: Learner, question: Question) -> Reply:
     language = learner.language
-    shown = _shown(question, language)
+    shown = shown_question(question, language)
     if question.parent_question_id is not None:
         header = t("question.easier", language)
     else:
@@ -138,7 +138,7 @@ def _result_reply(session: Session, learner: Learner, graded: Graded) -> Reply:
     if graded.is_correct:
         return Reply(t("question.correct", language))
     question = graded.question
-    shown = _shown(question, language)
+    shown = shown_question(question, language)
     answer = shown["options"].get(question.correct_option, question.options[question.correct_option])
     sources, buttons = source_footer(language, load_chunks(session, question.cited_chunk_ids))
     text = (f"{t('question.wrong', language, option=question.correct_option, answer=answer)}\n"

@@ -55,8 +55,12 @@ class TelegramAdapter:
         self.bot = bot
 
     async def reply(self, chat_id: str, reply: Reply) -> None:
-        await self.bot.send_message(chat_id=chat_id, text=reply.text[:MAX_MESSAGE_CHARS],
-                                    reply_markup=keyboard(reply.buttons))
+        """The text with its buttons, then any file as a document."""
+        if reply.text or reply.buttons:
+            await self.bot.send_message(chat_id=chat_id, text=reply.text[:MAX_MESSAGE_CHARS],
+                                        reply_markup=keyboard(reply.buttons))
+        if reply.file is not None:
+            await self.bot.send_document(chat_id=chat_id, document=reply.file.data, filename=reply.file.filename)
 
     async def send_text(self, learner: Learner, text: str, buttons: list[Button] | None = None) -> None:
         await self.reply(_chat_id(learner), Reply(text, buttons or []))

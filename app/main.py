@@ -8,6 +8,7 @@ from sqlalchemy import text
 from app.adapters.base import AdapterRegistry
 from app.adapters.telegram_bot import telegram_polling
 from app.config import Settings
+from app.core import opportunities
 from app.core.clock import Clock, initialize
 from app.core.conversation import Conversation
 from app.core.embeddings import E5Embedder, LazyEmbedder
@@ -52,6 +53,10 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
                                                           admin_ids=configured.admin_user_ids)
             with application.state.sessions() as session:
                 initialize(session)
+            # A malformed file stops startup rather than leaving payouts with stale or unchecked entries.
+            catalog = opportunities.load_catalog(configured.opportunities_file)
+            with application.state.sessions.begin() as session:
+                opportunities.sync(session, catalog)
             async with AsyncExitStack() as stack:
                 for service in services:
                     await stack.enter_async_context(service(application))

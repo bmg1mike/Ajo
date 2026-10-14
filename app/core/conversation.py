@@ -1,6 +1,6 @@
 """Channel-agnostic message routing. Adapters turn platform updates into `Inbound` and send back the replies.
 
-Commands: /start, /lesson, /ask, /language, /share_scores, /delete_me and /help. Any other text from
+Commands: /start, /lesson, /ask, /progress, /pack, /language, /share_scores, /delete_me and /help. Any other text from
 an onboarded learner is a question for QA (spec section 7.4). Raw channel user IDs are hashed
 on arrival and never stored. Button payloads are namespaced: `ob:` onboarding, `acct:` account,
 `qa:` QA, `ls:` lessons and `nd:` peer nudges.
@@ -17,15 +17,12 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core import account, grading, lessons, nudges, onboarding, qa
+from app.core import account, grading, lessons, nudges, onboarding, payouts, qa
 from app.core.clock import Clock
 from app.core.i18n import t
 from app.core.privacy import channel_hash
 from app.core.replies import Reply
 from app.models import Channel, Language, Learner, Onboarding
-
-# Spec section 10.2 commands from later milestones; until they exist they say so rather than act as questions.
-COMING_SOON = frozenset({"progress", "pack"})
 
 # Demo admin commands (spec section 9.3) and their button payloads.
 ADMIN_COMMANDS = frozenset({"seed_demo", "simulate_day", "simulate_week", "reset_demo", "demo_status"})
@@ -140,10 +137,12 @@ class Conversation:
             return [account.language_menu(learner)]
         if command == "share_scores":
             return [account.scores_menu(learner)]
+        if command == "progress":
+            return [payouts.progress_command(session, learner, now)]
+        if command == "pack":
+            return [payouts.pack_command(session, learner, now)]
         if command == "help":
             return [Reply(t("help", language))]
-        if command in COMING_SOON:
-            return [Reply(t("command.coming_soon", language))]
         return [Reply(t("command.unknown", language)), Reply(t("help", language))]
 
     def _button(self, session: Session, inbound: Inbound, learner: Learner | None, state: Onboarding | None,

@@ -134,7 +134,7 @@ Implementation notes:
 - **Lesson translation.** `LessonService.post` now translates only into real members' languages, since personas read nothing.
 - **Admin learner.** An admin becomes a learner only by onboarding, so consent is recorded. `/seed_demo` uses the admin's goal, or `DEMO_GOAL` if they haven't onboarded, and in that case asks them to `/start`. It refuses when no goal is ingested.
 - **Reset.** `/reset_demo` asks for confirmation. It then deletes the circle's lessons (with questions and answers), feed events, nudges, daily runs, simulation row, personas and members' outbox rows, clears check-in state and sets the clock offset to 0. Learners, their QA history, the corpus, pre-generated lessons and the LLM cache are kept.
-- **Payouts.** `/simulate_week` reports that payouts are not available yet (milestone 7).
+- **Payouts.** `/simulate_week` reported that payouts were not available yet; milestone 7 replaced this.
 
 Known limitations:
 - `/simulate_week` runs synchronously and can take a while with a cold LLM cache; Telegram handles one update at a time.
@@ -181,14 +181,50 @@ Known limitations:
 
 Depends on milestones 4–6.
 
-- [ ] Produce private progress summaries, including accuracy and weakest topic, and a circle summary containing aggregate check-ins only.
-- [ ] Generate a text or compressed PDF study pack with lessons, questions, answers, and citations, strictly under 500 KB.
-- [ ] Curate `data/opportunities.json`; filter by goal, country, and deadline, and display the verification date.
-- [ ] Implement `/progress` and `/pack`, with payouts every seven virtual days.
-- [ ] Ensure `/simulate_week` produces one payout at the weekly boundary without duplicating scheduler payouts.
-- [ ] Cache the rehearsed QA and lesson responses and verify the minimum demo with no live LLM calls.
+- [x] Produce private progress summaries, including accuracy and weakest topic, and a circle summary containing aggregate check-ins only.
+- [x] Generate a text or compressed PDF study pack with lessons, questions, answers, and citations, strictly under 500 KB.
+- [x] Curate `data/opportunities.json`; filter by goal, country, and deadline, and display the verification date.
+- [x] Implement `/progress` and `/pack`, with payouts every seven virtual days.
+- [x] Ensure `/simulate_week` produces one payout at the weekly boundary without duplicating scheduler payouts.
+- [x] Cache the rehearsed QA and lesson responses and verify the minimum demo with no live LLM calls. *(English rehearsal: done. Yoruba: one QA answer still needs a live call; see the validation below.)*
 
 **Completion check:** A simulated week delivers all four payout components, protects individual scores, and meets the pack-size limit. Milestones 1–7 now support the minimum Telegram demo.
+
+**Validation:** `tests/test_payouts.py` runs on SQLite and PostgreSQL with the LLM disabled. It covers the following:
+- From a fresh demo, `/simulate_week` runs seven days and pays out once, on day 7. The real member's batch has all four parts: the private progress, the circle summary, the opportunity and the study pack. Personas get nothing.
+- The circle summary holds counts only, for example "checked in 16 time(s) over 7 lesson day(s)" and "3 of 4 members". It is the same for every member, even when a member shares scores in the daily feed. No member's payout names another member or carries their numbers.
+- The progress summary gets accuracy, topics covered and the weakest topic right (a wrong answer, then a right easier follow-up, then a right answer gives 50%). The pack shows the learner's own answers, the marked answers, explanations, follow-ups and citations, and ends with each source's licence.
+- From day 5, `/simulate_week` runs days 6 and 7 and pays out. The next `/simulate_week` runs days 8–14, and week 2 starts exactly where week 1 ended.
+- A day that has already run, a scheduler pass and a second `queue_weekly` for the same week queue nothing more.
+- `/progress` and `/pack` show "week N so far" mid-week. After the payout they show the week just paid out, including answers given later on day 7, until the next week's first lesson.
+- The pack stays strictly under the limit. At an exact-size limit it drops the last lesson and says so, and with a tiny limit it is still valid UTF-8.
+- Files in the outbox are stored base64-encoded and sent after their text. Telegram sends them as documents. If the learner deletes their data while the text is being sent, the file is not sent.
+- A database with seven days processed before payouts existed (no payout row) still bounds its weeks: `/progress` and `/pack` treat week 1 as ended at its seventh run, and week 2's payout covers days 8–14, not 1–14.
+- Opportunities: malformed or non-https entries and duplicate URLs are rejected. Sync makes the table match the file. Selection respects goal, country, deadline (inclusive), and checks that are too old or dated in the future. It orders by the curator's priority, then the nearest deadline. The checked-in file is valid, ranks a scholarship first and has no tied priorities. The command-line check reports each entry. Startup syncs the file and refuses a malformed one.
+- Reset deletes payouts. `/delete_me` leaves only the circle's anonymous counts. Deleting one learner never removes another learner's queued pack, even when the pack's base64 happens to contain their name.
+- Upgrading from revision 0006 keeps existing opportunities.
+
+Rehearsal: `uv run python -m app.sim.rehearse` ran the minimum demo script against a migrated copy of the ingested database with the LLM switched off. It covered onboarding, `/seed_demo 42`, day 1 with a wrong answer and the private follow-up, a cited answer, the off-topic fallback, days 2–5, the nudge, Tunde's return on day 6, `/simulate_week` to the day-7 payout, `/progress` and `/pack`.
+- In English: 46 LLM requests, all served from the cache (0 misses), and PASS. The payout offered the MTN Foundation scholarship with its link, which the rehearsal now checks (spec section 17 ends on "a real scholarship link"). All seven lessons were generated from the cache, not the fallback. The pack was 22 KB.
+- In Yoruba: one miss. The cited answer was cached only in English (milestone 2's evaluation learner), so it fell back. Lessons 1 and 7 show English with a note, because their Yoruba translations failed review in milestone 4.
+
+Before a Yoruba demo, run the rehearsal once with `--live` to cache that answer.
+
+Implementation notes:
+- **Weekly boundary.** A circle's week is seven processed days, counted from `daily_runs`, the same count the personas use. The payout is step 7 of `DemoEngine.run_day`, after the circle update. The scheduler and `/simulate_day` therefore share one boundary, and the day's claim stops a week being paid twice. The `weekly_payouts` primary key `(circle_id, week_index)` is a second guard, and the row records the period and the circle's counts.
+- **What a week covers.** A week covers the lessons posted after the end of the previous week up to and including the paying run. The previous week ended at its payout, or, if it was never paid out (days processed before revision 0007), at the circle's 7(N − 1)th daily run. `/progress` and `/pack` use the same boundaries, so each lesson belongs to one week. Answers count towards the week of the lesson they answer, whenever they were given. The payout runs at the morning lesson time of day 7, so answers given later that day are not in it, but `/progress` and `/pack` include them.
+- **`/simulate_week`.** It simulates days until a payout, seven at most. Spec section 9.3 says "seven days, then payout", and section 17 says "/simulate_week to day 7". From a fresh demo the two agree. From mid-week, stopping at the boundary is what the demo script needs.
+- **Progress.** "Days checked in" counts the week's lesson days with at least one answer. Questions and accuracy count main questions only, since easier follow-ups appear only after a wrong answer. The weakest topic is the one with the lowest accuracy below 100%; ties go to the topic with more answers, then the earlier one. With every answer correct, the summary says there is none.
+- **Study pack.** The pack is a UTF-8 `.txt` file (spec 7.7 allows plain text), with no new dependency. It uses stored translations only and never calls the LLM. Lessons without a translation are shown in English with a note. Citations are never translated, and the pack ends with each cited source's publisher, licence and URL, which CC BY requires. `PACK_MAX_BYTES` is 500,000, so "strictly under 500 KB" holds whether a KB is 1,000 or 1,024 bytes. Lessons are dropped from the end to fit, with a note. A week is about 22 KB.
+- **Delivery.** Each member gets one outbox batch, keyed `payout:<circle>:<week>:<learner>`, queued after the day's circle update. A message can now carry an `Attachment`. The outbox stores it base64-encoded and sends it with `send_file` after the text, re-reading the row and learner in between, so a deletion during the text stops the private file. The deletion scan checks only an attachment's filename, because packs name nobody.
+- **Opportunities.** Each entry in `data/opportunities.json` names its official page, `verified_on`, eligibility, a `kind` (scholarship, loan, exam, resource or other) and an explicit `priority` (1 is offered first). The order is MTN scholarship, NELFUND loan, UTME registration, syllabus. A deadline is set only when the page states one. The four entries (JAMB 2027 UTME registration, the official Biology syllabus, MTN Foundation scholarships and NELFUND loans) were checked against their official pages on 2026-10-14. Oil-company scholarships, the Federal Scholarship Board and olympiads were left out, because no current official page could be loaded. JAMB's 31 October admissions deadline was also left out, because it binds universities, not 2027 candidates. Startup syncs the file into `opportunities`, keyed by URL, and refuses to start if the file is malformed.
+- **Expired opportunities.** A payout skips any entry whose deadline has passed on the virtual clock, or whose check is over 90 days old (`VERIFICATION_MAX_AGE_DAYS`). It then shows the best priority, then the nearest deadline, then an entry with no deadline. If nothing qualifies, the payout says no checked opportunity is open, rather than showing an unverified one. `uv run python -m app.core.opportunities` shows what a payout would offer today, or on `--today`.
+
+Known limitations:
+- Opportunity titles and eligibility text are shown in English, as the provider wrote them, like citations.
+- The circle summary counts current members only. A member who deleted their data takes their answers with them, so earlier check-ins drop out of later summaries (the stored `weekly_payouts` counts are unchanged).
+- A week with lessons skipped (no topics, or no fallback) still pays out after seven processed days. Its pack covers the lessons that exist.
+- `/reset_demo` restarts the week count with the day count, because the virtual clock is global.
 
 ## Milestone 8: Voice Input and Output
 
@@ -236,6 +272,6 @@ Depends on milestones 3–4 and demo seeding; optional.
 
 - Select the local language for the minimum demo; the full demo script favors Yoruba while personas also use Pidgin.
 - Select the free LLM provider and supported model, verify current API compatibility and quotas, and retain configuration-based switching. Milestone 2 uses OpenAI GPT (`gpt-5.4-mini`); the client remains provider-agnostic. Unlike the free tiers in spec section 3.1, this is a paid API.
-- Define weekly-boundary behavior for payouts so scheduled and simulated runs agree. (Virtual-day scheduling is settled in milestone 5: one claimed `daily_runs` row per circle and virtual day, triggered at `LESSON_TIME` or by `/simulate_day`.)
-- Define expired-opportunity handling without inventing unverified content. (After the ten-topic sequence, lessons restart at topic 1 as revision; see milestone 4.)
+- ~~Define weekly-boundary behavior for payouts so scheduled and simulated runs agree.~~ Settled in milestone 7: the payout is step 7 of every seventh processed day's `DemoEngine.run_day`.
+- ~~Define expired-opportunity handling without inventing unverified content.~~ Settled in milestone 7: expired or stale entries are hidden, and the payout says when none is open. (After the ten-topic sequence, lessons restart at topic 1 as revision; see milestone 4.)
 - Keep WhatsApp, production auth, real matching, additional exams, mentor roles, and offline Android work outside this implementation.

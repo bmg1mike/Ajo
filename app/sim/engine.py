@@ -13,14 +13,18 @@ the virtual lesson time or an admin sent /simulate_day. Its steps, in order:
 5. Inactivity check: members first detected as quiet today (`app/core/nudges.py`).
 6. Queue each real member's batched circle update, carrying a nudge prompt for each newly quiet
    member to everyone else in the circle.
+7. On every seventh processed day, the weekly payout (`app/core/payouts.py`): each real member's
+   private progress, the circle summary, an opportunity and the study pack.
 
 The spec lists persona actions before the lesson post. Here the lesson comes first because the
 personas answer it; nothing is delivered before the transaction commits, so learners still get
 the lesson and then an update that already shows who checked in.
 
-/simulate_day advances the clock by 24 hours and runs the day; /simulate_week does that seven
-times. Weekly payouts arrive with milestone 7. Admin commands manage their own transactions,
-because they advance the clock and generate lessons.
+/simulate_day advances the clock by 24 hours and runs the day. /simulate_week simulates days until
+the next weekly payout, at most seven: from a fresh demo that is days 1 to 7, and from day 5 it is
+days 6 and 7, as the demo script's "/simulate_week to day 7" expects. The payout belongs to the
+daily run, so the scheduler and /simulate_week never pay out the same week twice. Admin commands
+manage their own transactions, because they advance the clock and generate lessons.
 """
 import logging
 import re
@@ -33,7 +37,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.base import Button
-from app.core import circles, feed, nudges, outbox
+from app.core import circles, feed, nudges, outbox, payouts
 from app.core.clock import Clock, virtual_day
 from app.core.conversation import ADMIN_PREFIX
 from app.core.embeddings import Embedder
@@ -43,14 +47,14 @@ from app.core.replies import Reply
 from app.db import dialect_insert
 from app.models import (
     Circle, CircleMember, ClockState, DailyRun, FeedEvent, Goal, Language, Learner, Lesson, Nudge, OutboundDelivery,
-    RunTrigger, Simulation, SyllabusTopic,
+    RunTrigger, Simulation, SyllabusTopic, WeeklyPayout,
 )
 from app.sim import personas
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_SEED = 42
-DAYS_PER_WEEK = 7
+DAYS_PER_WEEK = payouts.DAYS_PER_WEEK
 RESET_YES = f"{ADMIN_PREFIX}reset:yes"
 RESET_NO = f"{ADMIN_PREFIX}reset:no"
 _SEED = re.compile(r"\d{1,18}")
@@ -71,6 +75,7 @@ class DayReport:
     quiet: list[str]  # first names of members first detected as quiet today
     lessons_queued: int
     updates_queued: int
+    payout: payouts.PayoutReport | None = None  # set on the day a week was paid out
 
 
 class DemoEngine:
@@ -116,30 +121,33 @@ class DemoEngine:
         ).on_conflict_do_nothing(index_elements=["circle_id", "virtual_day"]).returning(DailyRun.circle_id))
         if claimed is None:
             raise _AlreadyRun
+        # The circle's processed days, this one included (the claim is already written).
+        day = session.scalar(select(func.count()).select_from(DailyRun).where(DailyRun.circle_id == circle.id))
         # 3. The lesson post, for real members only.
         lessons_queued = sum(outbox.enqueue(session, learner, replies, key=f"lesson:{lesson.id}:{learner.id}",
                                             now=self.clock.now(session))
                              for learner, replies in posts)
         # 4. Persona actions.
-        replies = self._personas_act(session, circle, lesson, today, now)
+        replies = self._personas_act(session, circle, lesson, day, today, now)
         # 5. Inactivity check, after the personas have had today's chance to check in.
         quiet = nudges.detect(session, circle.id, now)
         # 6. The batched circle update, with nudge prompts for the newly quiet.
         updates_queued = feed.queue_digests(session, self.clock, circle, now, quiet)
+        # 7. The weekly payout, after today's answers and update, on every seventh processed day.
+        payout = payouts.queue_weekly(session, self.clock, circle, now, day)
         statuses = feed.member_statuses(session, circle.id, lesson)
         topic = session.get(SyllabusTopic, lesson.topic_id).title if lesson else None
         return DayReport(circle.id, today, lesson.day_index if lesson else None, topic,
                          [status.first_name for status in statuses if status.last_checkin == today],
-                         replies, [member.first_name for member in quiet], lessons_queued, updates_queued)
+                         replies, [member.first_name for member in quiet], lessons_queued, updates_queued, payout)
 
-    def _personas_act(self, session: Session, circle: Circle, lesson: Lesson | None, today: date, now) -> int:
+    def _personas_act(self, session: Session, circle: Circle, lesson: Lesson | None, day: int, today: date,
+                      now) -> int:
         simulation = session.get(Simulation, circle.id)
         if simulation is None:
             return 0
         members = personas.circle_personas(session, circle, session.get(Goal, circle.goal_id), self.salt)
         if lesson is not None:
-            # The circle's processed days, this one included (the claim is already written).
-            day = session.scalar(select(func.count()).select_from(DailyRun).where(DailyRun.circle_id == circle.id))
             for persona, learner in members:
                 if personas.checks_in(session, persona, learner, day, today):
                     personas.answer_lesson(session, simulation.seed, persona, learner, lesson, day, now)
@@ -179,7 +187,7 @@ class DemoEngine:
         if command == "simulate_day":
             return self._simulate(user_hash, 1)
         if command == "simulate_week":
-            return self._simulate(user_hash, DAYS_PER_WEEK)
+            return self._simulate(user_hash, DAYS_PER_WEEK, until_payout=True)
         if command == "reset_demo":
             language = self._language(user_hash)
             return [Reply(t("admin.reset_confirm", language), [Button(t("admin.reset_yes", language), RESET_YES),
@@ -244,15 +252,22 @@ class DemoEngine:
             return None, language
         return circle, language
 
-    def _simulate(self, user_hash: str, days: int) -> list[Reply]:
+    def _simulate(self, user_hash: str, days: int, *, until_payout: bool = False) -> list[Reply]:
+        """Simulate up to `days` days; with `until_payout`, stop after the day that pays out a week."""
         with self.sessions() as session:
             circle, language = self._seeded_circle(session, user_hash)
             circle_id = circle.id if circle is not None else None
         if circle_id is None:
             return [Reply(t("admin.not_seeded", language))]
-        blocks = [self._report_text(*self.simulate_day(circle_id), language) for _ in range(days)]
-        if days == DAYS_PER_WEEK:
-            blocks.append(t("admin.payout_pending", language))
+        blocks, paid = [], False
+        for _ in range(days):
+            day, report = self.simulate_day(circle_id)
+            blocks.append(self._report_text(day, report, language))
+            paid = report is not None and report.payout is not None
+            if until_payout and paid:
+                break
+        if until_payout and not paid:
+            blocks.append(t("admin.week_no_payout", language))
         return [Reply("\n\n".join(blocks))]
 
     def _report_text(self, day: date, report: DayReport | None, language: Language) -> str:
@@ -264,7 +279,11 @@ class DemoEngine:
         text = t("admin.day_done", language, date=shown, lesson=lesson,
                  names=", ".join(report.checked_in) or t("admin.nobody", language),
                  lessons=report.lessons_queued, updates=report.updates_queued)
-        return f"{text}\n{t('admin.day_quiet', language, names=', '.join(report.quiet))}" if report.quiet else text
+        if report.quiet:
+            text += f"\n{t('admin.day_quiet', language, names=', '.join(report.quiet))}"
+        if report.payout is not None:
+            text += f"\n{t('admin.day_payout', language, week=report.payout.week, count=report.payout.queued)}"
+        return text
 
     def _status(self, user_hash: str) -> list[Reply]:
         with self.sessions() as session:
@@ -304,7 +323,8 @@ class DemoEngine:
                                               .where(CircleMember.circle_id == circle.id)))
             persona_ids = list(session.scalars(select(Learner.id).where(Learner.id.in_(member_ids),
                                                                         Learner.is_simulated.is_(True))))
-            for model in (DailyRun, Lesson, FeedEvent, Nudge, Simulation):  # lessons cascade to questions and answers
+            # Lessons cascade to questions and answers.
+            for model in (DailyRun, Lesson, FeedEvent, Nudge, Simulation, WeeklyPayout):
                 session.execute(delete(model).where(model.circle_id == circle.id))
             session.execute(delete(OutboundDelivery).where(OutboundDelivery.learner_id.in_(member_ids)))
             session.execute(delete(Learner).where(Learner.id.in_(persona_ids)))

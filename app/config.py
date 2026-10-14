@@ -1,4 +1,5 @@
 from datetime import time
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -36,6 +37,8 @@ class Settings(BaseSettings):
     scheduler_enabled: bool = False
     lesson_time: time = time(7, 0)  # 08:00 in Lagos
     demo_goal: str = "jamb_bio"  # the goal /seed_demo uses when the admin has not onboarded
+    # Hand-checked opportunities for weekly payouts, synced into the database at startup.
+    opportunities_file: Path = Path("data/opportunities.json")
 
     @field_validator("hash_salt")
     @classmethod

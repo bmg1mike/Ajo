@@ -315,7 +315,7 @@ def test_simulate_week_runs_seven_days_with_one_update_per_day(sessions, demo):
     before = offset(sessions)
     (reply,) = demo.admin.send("/simulate_week")
     assert offset(sessions) == before + 7 * 86400
-    assert reply.text.count("⏩") == 7 and reply.text.endswith(t("admin.payout_pending"))
+    assert reply.text.count("⏩") == 7 and reply.text.endswith(t("admin.day_payout", week=1, count=1))
     with sessions() as session:
         lessons = session.execute(select(Lesson.day_index, Lesson.topic_id).where(Lesson.circle_id == demo.circle_id)
                                   .order_by(Lesson.day_index)).all()

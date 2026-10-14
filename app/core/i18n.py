@@ -129,18 +129,24 @@ STRINGS: dict[str, dict[Language, str]] = {
         Language.EN: "Here's what you can do:\n"
                      "• /lesson: today's lesson and questions\n"
                      "• Type any Biology question, or use /ask followed by your question\n"
+                     "• /progress: your private progress this week\n"
+                     "• /pack: this week's study pack, to read offline\n"
                      "• /language: change your language\n"
                      "• /share_scores: choose whether your circle sees your scores\n"
                      "• /delete_me: delete your data",
         Language.YO: "Ohun tí o lè ṣe nìyí:\n"
                      "• /lesson: ẹ̀kọ́ àti ìbéèrè òní\n"
                      "• Kọ ìbéèrè Biology èyíkéyìí, tàbí lo /ask pẹ̀lú ìbéèrè rẹ\n"
+                     "• /progress: ìtẹ̀síwájú rẹ ní ọ̀sẹ̀ yìí (ìwọ nìkan ló máa rí i)\n"
+                     "• /pack: àkójọ ẹ̀kọ́ ọ̀sẹ̀ yìí, láti kà láìsí íńtánẹ́ẹ̀tì\n"
                      "• /language: yí èdè rẹ padà\n"
                      "• /share_scores: yàn bóyá ẹgbẹ́ rẹ máa rí máàkì rẹ\n"
                      "• /delete_me: pa ìwífún rẹ rẹ́",
         Language.PCM: "Na wetin you fit do be dis:\n"
                       "• /lesson: today lesson and questions\n"
                       "• Type any Biology question, or use /ask with your question\n"
+                      "• /progress: how you dey go this week (na only you go see am)\n"
+                      "• /pack: this week study pack, to read without data\n"
                       "• /language: change your language\n"
                       "• /share_scores: choose whether your circle go see your score\n"
                       "• /delete_me: delete your data",
@@ -217,11 +223,6 @@ STRINGS: dict[str, dict[Language, str]] = {
         Language.EN: "I don't know that command.",
         Language.YO: "Mi ò mọ àṣẹ yẹn.",
         Language.PCM: "I no sabi that command.",
-    },
-    "command.coming_soon": {
-        Language.EN: "That feature isn't ready yet.",
-        Language.YO: "Ẹ̀yà yẹn kò tíì ṣetán.",
-        Language.PCM: "That one never ready.",
     },
     "message.text_only": {
         Language.EN: "For now I can only read text messages.",
@@ -439,6 +440,168 @@ STRINGS: dict[str, dict[Language, str]] = {
     "weekday.4": {Language.EN: "Friday", Language.YO: "Ọjọ́ Ẹtì", Language.PCM: "Friday"},
     "weekday.5": {Language.EN: "Saturday", Language.YO: "Ọjọ́ Àbámẹ́ta", Language.PCM: "Saturday"},
     "weekday.6": {Language.EN: "Sunday", Language.YO: "Ọjọ́ Àìkú", Language.PCM: "Sunday"},
+    # Weekly payout (spec section 7.7): private progress, a counts-only circle summary, an opportunity, a pack.
+    "payout.intro": {
+        Language.EN: "💰 Your week {week} payout is here: your progress, your circle's week, an opportunity and "
+                     "a study pack.",
+        Language.YO: "💰 Ẹ̀bùn ọ̀sẹ̀ {week} rẹ ti dé: ìtẹ̀síwájú rẹ, ọ̀sẹ̀ ẹgbẹ́ rẹ, àǹfààní kan àti àkójọ ẹ̀kọ́.",
+        Language.PCM: "💰 Your week {week} payout don land: how you dey go, how your circle do this week, one "
+                      "opportunity and study pack.",
+    },
+    "progress.header": {
+        Language.EN: "📊 Your progress, week {week}",
+        Language.YO: "📊 Ìtẹ̀síwájú rẹ, ọ̀sẹ̀ {week}",
+        Language.PCM: "📊 How you dey go, week {week}",
+    },
+    "progress.header_so_far": {
+        Language.EN: "📊 Your progress, week {week} so far",
+        Language.YO: "📊 Ìtẹ̀síwájú rẹ títí di báyìí, ọ̀sẹ̀ {week}",
+        Language.PCM: "📊 How you dey go so far, week {week}",
+    },
+    "progress.private": {
+        Language.EN: "🔒 Only you can see this.",
+        Language.YO: "🔒 Ìwọ nìkan ló lè rí èyí.",
+        Language.PCM: "🔒 Na only you fit see dis one.",
+    },
+    "progress.days": {
+        Language.EN: "Days checked in: {days} of {total}",
+        Language.YO: "Ọjọ́ tí o wọlé: {days} nínú {total}",
+        Language.PCM: "Days wey you check in: {days} out of {total}",
+    },
+    "progress.questions": {
+        Language.EN: "Questions answered: {answered} of {total}",
+        Language.YO: "Ìbéèrè tí o dáhùn: {answered} nínú {total}",
+        Language.PCM: "Questions wey you answer: {answered} out of {total}",
+    },
+    "progress.accuracy": {
+        Language.EN: "Accuracy: {percent}% ({correct} of {answered} correct)",
+        Language.YO: "Ìpéye: {percent}% ({correct} nínú {answered} ló tọ̀nà)",
+        Language.PCM: "Accuracy: {percent}% ({correct} out of {answered} correct)",
+    },
+    "progress.accuracy_none": {
+        Language.EN: "Accuracy: no answers yet",
+        Language.YO: "Ìpéye: kò tíì sí ìdáhùn",
+        Language.PCM: "Accuracy: no answer yet",
+    },
+    "progress.topics": {
+        Language.EN: "Topics covered: {topics}",
+        Language.YO: "Kókó tí o kà: {topics}",
+        Language.PCM: "Topics wey you cover: {topics}",
+    },
+    "progress.topics_none": {
+        Language.EN: "Topics covered: none yet",
+        Language.YO: "Kókó tí o kà: kò tíì sí",
+        Language.PCM: "Topics wey you cover: none yet",
+    },
+    "progress.weakest": {
+        Language.EN: "Weakest topic: {topic} ({correct} of {answered} correct)",
+        Language.YO: "Kókó tí ó le jù fún ọ: {topic} ({correct} nínú {answered} ló tọ̀nà)",
+        Language.PCM: "Topic wey still hard you: {topic} ({correct} out of {answered} correct)",
+    },
+    "progress.no_weakest": {
+        Language.EN: "Weakest topic: none, every answer was correct 🎉",
+        Language.YO: "Kókó tí ó le jù fún ọ: kò sí, gbogbo ìdáhùn rẹ ló tọ̀nà 🎉",
+        Language.PCM: "Topic wey still hard you: none, all your answers correct 🎉",
+    },
+    "progress.no_lessons": {
+        Language.EN: "Your circle has no lessons yet this week. Send /lesson to get today's lesson.",
+        Language.YO: "Ẹgbẹ́ rẹ kò tíì ní ẹ̀kọ́ kankan ní ọ̀sẹ̀ yìí. Fi /lesson ránṣẹ́ láti gba ẹ̀kọ́ òní.",
+        Language.PCM: "Your circle never get any lesson this week. Send /lesson to collect today lesson.",
+    },
+    "circle_summary.text": {
+        Language.EN: "🔵 Circle summary, week {week}\nTogether, the circle checked in {checkins} time(s) over "
+                     "{days} lesson day(s).\n{active} of {members} members checked in at least once.",
+        Language.YO: "🔵 Àkópọ̀ ẹgbẹ́, ọ̀sẹ̀ {week}\nLápapọ̀, ẹgbẹ́ wọlé ní ìgbà {checkins} láàrin ọjọ́ ẹ̀kọ́ "
+                     "{days}.\n{active} nínú ọmọ ẹgbẹ́ {members} ló wọlé, ó kéré tán lẹ́ẹ̀kan.",
+        Language.PCM: "🔵 Circle summary, week {week}\nAltogether, the circle check in {checkins} time(s) for "
+                      "{days} lesson day(s).\n{active} out of {members} members check in at least once.",
+    },
+    "opportunity.text": {
+        Language.EN: "🎓 Opportunity: {title}\nFrom: {provider}\nWho can apply: {eligibility}\n{deadline}\n{url}\n"
+                     "Last checked by the Ajo team: {verified}",
+        Language.YO: "🎓 Àǹfààní: {title}\nLáti ọ̀dọ̀: {provider}\nTa ló lè béèrè: {eligibility}\n{deadline}\n{url}\n"
+                     "Ìgbà tí ẹgbẹ́ Ajo yẹ̀ ẹ́ wò kẹ́yìn: {verified}",
+        Language.PCM: "🎓 Opportunity: {title}\nFrom: {provider}\nWho fit apply: {eligibility}\n{deadline}\n{url}\n"
+                      "Last time Ajo team check am: {verified}",
+    },
+    "opportunity.deadline": {
+        Language.EN: "Deadline: {date}",
+        Language.YO: "Ọjọ́ ìparí: {date}",
+        Language.PCM: "Deadline: {date}",
+    },
+    "opportunity.no_deadline": {
+        Language.EN: "Deadline: none stated; check the link for dates",
+        Language.YO: "Ọjọ́ ìparí: wọn kò sọ ọ́; wo ìjápọ̀ náà fún àwọn ọjọ́",
+        Language.PCM: "Deadline: dem no talk am; check the link for the dates",
+    },
+    "opportunity.none": {
+        Language.EN: "🎓 No opportunity we have checked for your goal is open right now, so there isn't one this week.",
+        Language.YO: "🎓 Kò sí àǹfààní tí a ti yẹ̀ wò fún àfojúsùn rẹ tó ṣí sílẹ̀ báyìí, nítorí náà kò sí ọ̀kankan "
+                     "ní ọ̀sẹ̀ yìí.",
+        Language.PCM: "🎓 No opportunity wey we don check for your goal dey open now, so none dey this week.",
+    },
+    "pack.caption": {
+        Language.EN: "📦 Your study pack for week {week} ({size} KB). Save it to read offline.",
+        Language.YO: "📦 Àkójọ ẹ̀kọ́ rẹ fún ọ̀sẹ̀ {week} ({size} KB). Fi pamọ́ kí o lè kà á láìsí íńtánẹ́ẹ̀tì.",
+        Language.PCM: "📦 Your study pack for week {week} ({size} KB). Save am make you fit read am without data.",
+    },
+    "pack.caption_so_far": {
+        Language.EN: "📦 Your study pack for week {week} so far ({size} KB). Save it to read offline.",
+        Language.YO: "📦 Àkójọ ẹ̀kọ́ rẹ fún ọ̀sẹ̀ {week} títí di báyìí ({size} KB). Fi pamọ́ kí o lè kà á láìsí "
+                     "íńtánẹ́ẹ̀tì.",
+        Language.PCM: "📦 Your study pack for week {week} so far ({size} KB). Save am make you fit read am without "
+                      "data.",
+    },
+    "pack.empty": {
+        Language.EN: "There are no lessons for a study pack yet this week. Send /lesson to get today's lesson.",
+        Language.YO: "Kò tíì sí ẹ̀kọ́ fún àkójọ ẹ̀kọ́ ní ọ̀sẹ̀ yìí. Fi /lesson ránṣẹ́ láti gba ẹ̀kọ́ òní.",
+        Language.PCM: "No lesson dey for study pack this week yet. Send /lesson to collect today lesson.",
+    },
+    "pack.title": {
+        Language.EN: "Ajo study pack: {goal}, week {week}",
+        Language.YO: "Àkójọ ẹ̀kọ́ Ajo: {goal}, ọ̀sẹ̀ {week}",
+        Language.PCM: "Ajo study pack: {goal}, week {week}",
+    },
+    "pack.period": {
+        Language.EN: "Lessons from {start} to {end}",
+        Language.YO: "Ẹ̀kọ́ láti {start} dé {end}",
+        Language.PCM: "Lessons from {start} reach {end}",
+    },
+    "pack.answer": {
+        Language.EN: "Answer: {option}. {answer}",
+        Language.YO: "Ìdáhùn: {option}. {answer}",
+        Language.PCM: "Answer: {option}. {answer}",
+    },
+    "pack.your_answer_correct": {
+        Language.EN: "Your answer: {option} ✅",
+        Language.YO: "Ìdáhùn rẹ: {option} ✅",
+        Language.PCM: "Your answer: {option} ✅",
+    },
+    "pack.your_answer_wrong": {
+        Language.EN: "Your answer: {option} ❌",
+        Language.YO: "Ìdáhùn rẹ: {option} ❌",
+        Language.PCM: "Your answer: {option} ❌",
+    },
+    "pack.not_answered": {
+        Language.EN: "You didn't answer this question.",
+        Language.YO: "O kò dáhùn ìbéèrè yìí.",
+        Language.PCM: "You no answer dis question.",
+    },
+    "pack.explanation": {
+        Language.EN: "Why: {explanation}",
+        Language.YO: "Ìdí: {explanation}",
+        Language.PCM: "Why: {explanation}",
+    },
+    "pack.sources": {
+        Language.EN: "Sources and licences",
+        Language.YO: "Orísun àti ìwé àṣẹ",
+        Language.PCM: "Sources and licence",
+    },
+    "pack.trimmed": {
+        Language.EN: "Some lessons were left out to keep this pack under 500 KB.",
+        Language.YO: "A fi àwọn ẹ̀kọ́ kan sílẹ̀ kí àkójọ yìí lè kéré ju 500 KB lọ.",
+        Language.PCM: "We comot some lessons make dis pack no pass 500 KB.",
+    },
     # Demo admin commands (spec section 9.3), for Telegram user IDs in ADMIN_IDS only
     "admin.forbidden": {
         Language.EN: "That command is only for demo admins.",
@@ -502,10 +665,15 @@ STRINGS: dict[str, dict[Language, str]] = {
     },
     "admin.nobody": {Language.EN: "nobody", Language.YO: "kò sí ẹnìkan", Language.PCM: "nobody"},
     "admin.never": {Language.EN: "never", Language.YO: "kò tíì sí rí", Language.PCM: "never"},
-    "admin.payout_pending": {
-        Language.EN: "Weekly payouts are not available yet, so none was sent.",
-        Language.YO: "Ẹ̀bùn ọ̀sẹ̀ kò tíì sí, nítorí náà a kò fi ìkankan ránṣẹ́.",
-        Language.PCM: "Weekly payout never ready, so we no send any.",
+    "admin.day_payout": {
+        Language.EN: "💰 Week {week} payout queued for {count} member(s)",
+        Language.YO: "💰 A ti to ẹ̀bùn ọ̀sẹ̀ {week} sílẹ̀ fún ọmọ ẹgbẹ́ {count}",
+        Language.PCM: "💰 Week {week} payout dey queue for {count} member(s)",
+    },
+    "admin.week_no_payout": {
+        Language.EN: "No weekly payout fell due in these days.",
+        Language.YO: "Kò sí ẹ̀bùn ọ̀sẹ̀ tó yẹ ní àwọn ọjọ́ wọ̀nyí.",
+        Language.PCM: "No weekly payout reach for these days.",
     },
     "admin.status": {
         Language.EN: "🧪 Demo status\nVirtual time: {time} (clock {offset})\nCircle: {circle}, seed {seed}\n"
@@ -522,12 +690,12 @@ STRINGS: dict[str, dict[Language, str]] = {
     },
     "admin.persona_marker": {Language.EN: " (persona)", Language.YO: " (ẹ̀dá àfihàn)", Language.PCM: " (persona)"},
     "admin.reset_confirm": {
-        Language.EN: "Reset the demo? This deletes the circle's lessons, answers, feed, nudges and personas and sets "
+        Language.EN: "Reset the demo? This deletes the circle's lessons, answers, feed, nudges, payouts and personas and sets "
                      "the clock back to real time. Learners, their questions and the library are kept.",
-        Language.YO: "Ṣé kí a tún àfihàn bẹ̀rẹ̀? Èyí máa pa ẹ̀kọ́, ìdáhùn, ìròyìn, ìránlétí àti àwọn ẹ̀dá àfihàn "
+        Language.YO: "Ṣé kí a tún àfihàn bẹ̀rẹ̀? Èyí máa pa ẹ̀kọ́, ìdáhùn, ìròyìn, ìránlétí, ẹ̀bùn ọ̀sẹ̀ àti àwọn ẹ̀dá àfihàn "
                      "ẹgbẹ́ náà rẹ́, yóò sì dá aago padà sí àkókò gidi. A máa pa àwọn akẹ́kọ̀ọ́, ìbéèrè wọn àti "
                      "ilé-ìkàwé mọ́.",
-        Language.PCM: "You wan reset the demo? E go delete the circle lessons, answers, feed, nudges and personas, "
+        Language.PCM: "You wan reset the demo? E go delete the circle lessons, answers, feed, nudges, payouts and personas, "
                       "and carry the clock back to real time. Learners, their questions and the library go stay.",
     },
     "admin.reset_yes": {Language.EN: "Yes, reset", Language.YO: "Bẹ́ẹ̀ni, tún un bẹ̀rẹ̀", Language.PCM: "Yes, reset am"},

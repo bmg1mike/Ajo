@@ -1,9 +1,11 @@
-"""Queued outbound messages: the daily lesson post and the batched circle feed (spec sections 7.2, 7.5).
+"""Queued outbound messages: the daily lesson post, the batched circle feed and the weekly payout
+(spec sections 7.2, 7.5, 7.7).
 
 A reply to a learner's own message goes back through the adapter that received it. Messages the
 learner did not ask for are queued here instead, in the same transaction as the work that produced
 them, and a background job (`app/scheduler.py`) sends them through the adapter registry. Each row
-holds one batch of messages for one learner, sent in order.
+holds one batch of messages for one learner, sent in order. A message may carry a file (the weekly
+study pack), stored base64-encoded and sent after the message's text.
 
 Every row has a deduplication key, so a batch is queued at most once: the feed uses one key per
 learner and virtual day, which is what limits ordinary circle updates to one message a day.
@@ -11,8 +13,9 @@ Simulated learners have no chat ID and are never queued. A row is retried until 
 failed MAX_ATTEMPTS times; a failure part-way through a batch resends the whole batch, and holds
 back that learner's later batches until the next pass so they never arrive out of order.
 
-Rows are re-read just before each message is sent, so a learner deleted meanwhile receives nothing
-more, and score lines are rendered from the owner's current /share_scores choice at that moment.
+Rows are re-read just before each message is sent, and again before a message's file, so a learner
+deleted meanwhile receives nothing more, and score lines are rendered from the owner's current
+/share_scores choice at that moment.
 
 A row may carry an `expires_at` virtual time. From then on it is never sent, whether it was
 waiting for an adapter, retrying after failures or simply not reached yet; it stays unsent and
@@ -20,6 +23,7 @@ does not hold back the learner's other batches. Nudges expire at the end of the 
 were sent, so a late one is dropped rather than delivered beside the next day's.
 """
 import asyncio
+import base64
 import logging
 from dataclasses import dataclass
 from datetime import datetime
@@ -30,7 +34,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.base import AdapterRegistry, Button
 from app.core.clock import Clock
-from app.core.replies import Reply
+from app.core.replies import Attachment, Reply
 from app.db import dialect_insert
 from app.models import Learner, OutboundDelivery
 
@@ -63,9 +67,7 @@ def enqueue(session: Session, learner: Learner, replies: list[Reply], *, key: st
     """
     if learner.is_simulated or not learner.channel_chat_id or not replies:
         return False
-    payload = {"messages": [{"text": reply.text,
-                             "buttons": [{"text": button.text, "payload": button.payload} for button in reply.buttons]}
-                            for reply in replies],
+    payload = {"messages": [_message(reply) for reply in replies],
                "scores": [{"message": score.message, "line": score.line, "learner_id": str(score.learner_id),
                            "shared": score.shared} for score in scores]}
     # RETURNING, not rowcount: psycopg reports -1 for a single-row ON CONFLICT insert.
@@ -78,6 +80,14 @@ def enqueue(session: Session, learner: Learner, replies: list[Reply], *, key: st
     return inserted is not None
 
 
+def _message(reply: Reply) -> dict:
+    message = {"text": reply.text,
+               "buttons": [{"text": button.text, "payload": button.payload} for button in reply.buttons]}
+    if reply.file is not None:
+        message["file"] = {"filename": reply.file.filename, "data": base64.b64encode(reply.file.data).decode("ascii")}
+    return message
+
+
 def render(session: Session, delivery: OutboundDelivery, index: int) -> Reply:
     """Message `index` of a batch as it should be sent now: shared scores only for members still sharing them."""
     message = delivery.payload["messages"][index]
@@ -88,7 +98,9 @@ def render(session: Session, delivery: OutboundDelivery, index: int) -> Reply:
         owner = session.get(Learner, UUID(score["learner_id"]))
         if owner is not None and owner.share_scores:
             lines[score["line"]] = score["shared"]
-    return Reply("\n".join(lines), [Button(button["text"], button["payload"]) for button in message["buttons"]])
+    file = message.get("file")
+    return Reply("\n".join(lines), [Button(button["text"], button["payload"]) for button in message["buttons"]],
+                 Attachment(file["filename"], base64.b64decode(file["data"])) if file else None)
 
 
 def replies_of(session: Session, delivery: OutboundDelivery) -> list[Reply]:
@@ -175,7 +187,16 @@ async def deliver_pending(sessions: sessionmaker[Session], registry: AdapterRegi
                 if prepared is None:
                     break  # the learner was deleted, the row settled elsewhere, or it expired
                 learner, reply = prepared
-                await registry.send_text(learner, reply.text, reply.buttons)
+                if reply.text or reply.buttons:
+                    await registry.send_text(learner, reply.text, reply.buttons)
+                    if reply.file is not None:
+                        # A deletion may have committed while the text was sent: re-read before the private file.
+                        prepared = await asyncio.to_thread(_prepare, sessions, clock, item.id, index)
+                        if prepared is None:
+                            break
+                        learner = prepared[0]
+                if reply.file is not None:
+                    await registry.send_file(learner, reply.file.filename, reply.file.data)
             else:
                 await asyncio.to_thread(_mark_delivered, sessions, clock, item.id)
                 sent += 1

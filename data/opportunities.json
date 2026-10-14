@@ -1,0 +1,53 @@
+{
+  "about": "Hand-checked opportunities for weekly payouts (spec section 7.7). Every entry comes from the official page at its url, loaded on verified_on. A deadline is set only when that page states one for the current cycle. Re-check each page and update verified_on before every demo; python -m app.core.opportunities shows what a payout would offer. priority ranks entries for payouts (1 is offered first, ahead of any deadline): a scholarship, the spec's example of a payout, comes first.",
+  "opportunities": [
+    {
+      "title": "MTN Foundation scholarships, including the Top 10 UTME award",
+      "provider": "MTN Nigeria Foundation",
+      "url": "https://www.mtn.ng/foundation/mtn-scholarships/",
+      "country": "NG",
+      "goal_codes": ["jamb_bio"],
+      "deadline": null,
+      "verified_on": "2026-10-14",
+      "eligibility": "The top 10 UTME scorers, and students in STEM courses at public tertiary institutions in Nigeria; 100 of the 2026 slots are for medical students.",
+      "kind": "scholarship",
+      "priority": 1
+    },
+    {
+      "title": "Interest-free student loan",
+      "provider": "Nigerian Education Loan Fund (NELFUND)",
+      "url": "https://portal.nelf.gov.ng/",
+      "country": "NG",
+      "goal_codes": ["jamb_bio"],
+      "deadline": null,
+      "verified_on": "2026-10-14",
+      "eligibility": "Students in Nigerian higher education needing help with institutional fees or upkeep, who do not hold another government-sponsored scholarship. Repayment starts two years after NYSC.",
+      "kind": "loan",
+      "priority": 2
+    },
+    {
+      "title": "2027 UTME registration (dates to be announced)",
+      "provider": "Joint Admissions and Matriculation Board (JAMB)",
+      "url": "https://www.jamb.gov.ng/Bulletin/2026/JAMBulletin_21-09-2026.pdf",
+      "country": "NG",
+      "goal_codes": ["jamb_bio"],
+      "deadline": null,
+      "verified_on": "2026-10-14",
+      "eligibility": "Candidates seeking admission into Nigerian tertiary institutions through the 2027 UTME. JAMB says much of registration will start from home, with centre visits only for biometrics.",
+      "kind": "exam",
+      "priority": 3
+    },
+    {
+      "title": "Official UTME Biology syllabus (free download)",
+      "provider": "Joint Admissions and Matriculation Board (JAMB)",
+      "url": "https://ibass.jamb.gov.ng/static/media/Biology.0075e70afd357d7a39ae.pdf",
+      "country": "NG",
+      "goal_codes": ["jamb_bio"],
+      "deadline": null,
+      "verified_on": "2026-10-14",
+      "eligibility": "Any candidate preparing for the UTME Biology paper.",
+      "kind": "resource",
+      "priority": 4
+    }
+  ]
+}

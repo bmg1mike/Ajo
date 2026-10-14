@@ -43,6 +43,14 @@ class RunTrigger(StrEnum):
     SIMULATION = "simulation"
 
 
+class OpportunityKind(StrEnum):
+    SCHOLARSHIP = "scholarship"
+    LOAN = "loan"
+    EXAM = "exam"  # an official exam or admission step, such as UTME registration
+    RESOURCE = "resource"  # free official study material
+    OTHER = "other"
+
+
 class OnboardingStep(StrEnum):
     LANGUAGE = "language"
     NAME = "name"
@@ -272,7 +280,25 @@ class Nudge(Identified, Base):
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
 
 
+class WeeklyPayout(Base):
+    """One row per circle and week whose payout was queued (spec section 7.7).
+
+    The primary key is the duplicate guard, beside the daily run's own claim. The week covers the
+    lessons posted after `period_start` (the previous week's end; null for week 1) up to and including
+    `period_end`. `summary` holds circle-level counts only, never a learner's ID or score, so the row
+    is an anonymised aggregate that outlives /delete_me.
+    """
+    __tablename__ = "weekly_payouts"
+    circle_id: Mapped[UUID] = mapped_column(ForeignKey("circles.id", ondelete="CASCADE"), primary_key=True)
+    week_index: Mapped[int] = mapped_column(Integer, primary_key=True)
+    period_start: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    period_end: Mapped[datetime] = mapped_column(TIMESTAMP)
+    summary: Mapped[dict] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
+
+
 class Opportunity(Identified, Base):
+    """A hand-checked entry from data/opportunities.json, synced at startup; the file is the source of truth."""
     __tablename__ = "opportunities"
     title: Mapped[str] = mapped_column(Text)
     provider: Mapped[str] = mapped_column(Text)
@@ -281,6 +307,12 @@ class Opportunity(Identified, Base):
     goal_codes: Mapped[list[str]] = mapped_column(JSON_TYPE)
     deadline: Mapped[date | None] = mapped_column(Date)
     verified_on: Mapped[date] = mapped_column(Date)
+    # Who may apply, in the provider's words; null only for rows synced before revision 0007.
+    eligibility: Mapped[str | None] = mapped_column(Text)
+    kind: Mapped[OpportunityKind] = mapped_column(enum_type(OpportunityKind, "opportunity_kind"),
+                                                  default=OpportunityKind.OTHER, server_default="other")
+    # Payouts offer the lowest number first, then the nearest deadline: curators rank by value to the learner.
+    priority: Mapped[int] = mapped_column(Integer, default=100, server_default="100")
 
 
 class QALog(Identified, Base):

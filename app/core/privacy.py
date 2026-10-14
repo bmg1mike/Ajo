@@ -28,6 +28,10 @@ def _identifier_pattern(identifiers: set[str]) -> re.Pattern[str]:
 
 
 def _contains_identifier(value: object, pattern: re.Pattern[str]) -> bool:
+    if isinstance(value, dict) and set(value) == {"filename", "data"}:
+        # A queued attachment (the study pack) names nobody; its base64 data could match a short name by chance
+        # and take another learner's undelivered payout with it.
+        return _contains_identifier(value["filename"], pattern)
     if isinstance(value, dict):
         return any(_contains_identifier(key, pattern) or _contains_identifier(item, pattern)
                    for key, item in value.items())
