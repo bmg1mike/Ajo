@@ -5,6 +5,7 @@ from typing import AsyncContextManager
 from fastapi import FastAPI
 from sqlalchemy import text
 
+from app.adapters import web
 from app.adapters.base import AdapterRegistry
 from app.adapters.telegram_bot import telegram_polling
 from app.config import Settings
@@ -18,6 +19,7 @@ from app.core.voice import VoiceService
 from app.db import build_engine, session_factory
 from app.llm.client import LLMClient
 from app.scheduler import scheduler_service
+from app.sim import personas
 from app.sim.engine import DemoEngine
 from app.speech import stt, tts
 
@@ -39,6 +41,8 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
             application.state.sessions = session_factory(engine)
             application.state.clock = Clock(application.state.sessions)
             application.state.adapters = AdapterRegistry()
+            if configured.web_enabled:  # the outbox delivers to web simulator panes through it
+                application.state.adapters.register(web.WebAdapter(application.state.sessions, application.state.clock))
             llm = LLMClient.from_settings(configured, application.state.sessions, application.state.clock)
             embedder = LazyEmbedder(lambda: E5Embedder(configured.embed_model))  # shared: one model in memory
             application.state.qa = QAService(embedder, llm, application.state.clock,
@@ -61,6 +65,10 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
                                                           admin_ids=configured.admin_user_ids, voice=voice)
             with application.state.sessions() as session:
                 initialize(session)
+            if not configured.web_enabled:
+                # No pane can speak for a controlled persona now, so the simulation takes them all back.
+                with application.state.sessions.begin() as session:
+                    personas.release_all(session)
             # A malformed file stops startup rather than leaving payouts with stale or unchecked entries.
             catalog = opportunities.load_catalog(configured.opportunities_file)
             with application.state.sessions.begin() as session:
@@ -79,6 +87,7 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
             engine.dispose()
 
     application = FastAPI(title="Ajo", lifespan=lifespan)
+    web.register(application)  # GET /sim and /web/*, answering only when WEB_ENABLED
 
     @application.get("/")
     def root() -> dict[str, str]:

@@ -235,7 +235,7 @@ def queue_weekly(session: Session, clock: Clock, circle: Circle, now: datetime, 
     goal = session.get(Goal, circle.goal_id)
     opportunity = opportunities.choose(session, goal, virtual_day(now))
     members = session.scalars(select(Learner).join(CircleMember, CircleMember.learner_id == Learner.id)
-                              .where(CircleMember.circle_id == circle.id, Learner.is_simulated.is_(False))
+                              .where(CircleMember.circle_id == circle.id, Learner.receives_messages)
                               .order_by(CircleMember.joined_at, Learner.id)).all()
     queued = sum(outbox.enqueue(session, learner, payout_replies(session, learner, lessons, week, goal, summary,
                                                                  opportunity),

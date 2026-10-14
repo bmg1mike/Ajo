@@ -19,6 +19,8 @@ class Adapter(Protocol):
 
 
 class AdapterRegistry:
+    """Routes by `learner.channel`. Personas are skipped unless a web simulator pane controls them."""
+
     def __init__(self) -> None:
         self._adapters: dict[Channel, Adapter] = {}
 
@@ -41,13 +43,13 @@ class AdapterRegistry:
             raise LookupError(f"No adapter registered for {channel}") from None
 
     async def send_text(self, learner: Learner, text: str, buttons: list[Button] | None = None) -> None:
-        if not learner.is_simulated:
+        if learner.receives_messages:
             await self.get(learner.channel).send_text(learner, text, buttons)
 
     async def send_voice(self, learner: Learner, ogg_bytes: bytes) -> None:
-        if not learner.is_simulated:
+        if learner.receives_messages:
             await self.get(learner.channel).send_voice(learner, ogg_bytes)
 
     async def send_file(self, learner: Learner, filename: str, data: bytes) -> None:
-        if not learner.is_simulated:
+        if learner.receives_messages:
             await self.get(learner.channel).send_file(learner, filename, data)

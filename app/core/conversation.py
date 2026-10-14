@@ -5,6 +5,9 @@ an onboarded learner is a question for QA (spec section 7.4), and so is a voice 
 transcribed. Raw channel user IDs are hashed on arrival and never stored. Button payloads are
 namespaced: `ob:` onboarding, `acct:` account, `qa:` QA, `ls:` lessons and `nd:` peer nudges.
 
+Telegram (app/adapters/telegram_bot.py) and the web simulator (app/adapters/web.py) both build
+`Inbound` messages for `handle`; a web pane may also speak for a persona it controls.
+
 Transcription and the lesson Listen button (app/core/voice.py) take seconds, so they run outside
 the message's transaction.
 
@@ -140,7 +143,8 @@ class Conversation:
         # Lock onboarding progress first so concurrent taps on the last step create one learner, not two.
         state = session.get(Onboarding, user_hash, with_for_update=True)
         learner = session.scalar(select(Learner).where(Learner.channel_user_hash == user_hash))
-        if learner is not None and learner.channel_chat_id != inbound.chat_id:
+        # Personas speak through the web simulator but never get a chat ID (the simulated_no_chat constraint).
+        if learner is not None and not learner.is_simulated and learner.channel_chat_id != inbound.chat_id:
             learner.channel_chat_id = inbound.chat_id
         language = learner.language if learner else state.language if state else Language.EN
 

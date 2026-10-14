@@ -195,7 +195,7 @@ def queue_digests(session: Session, clock: Clock, circle: Circle, now: datetime,
     today = virtual_day(now)
     statuses = member_statuses(session, circle.id, todays_lesson(session, circle.id, today))
     rows = session.execute(select(Learner, CircleMember).join(CircleMember, CircleMember.learner_id == Learner.id)
-                           .where(CircleMember.circle_id == circle.id, Learner.is_simulated.is_(False))
+                           .where(CircleMember.circle_id == circle.id, Learner.receives_messages)
                            .order_by(CircleMember.joined_at, Learner.id)).all()
     queued = 0
     for learner, member in rows:

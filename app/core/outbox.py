@@ -9,9 +9,10 @@ study pack), stored base64-encoded and sent after the message's text.
 
 Every row has a deduplication key, so a batch is queued at most once: the feed uses one key per
 learner and virtual day, which is what limits ordinary circle updates to one message a day.
-Simulated learners have no chat ID and are never queued. A row is retried until it is sent or has
-failed MAX_ATTEMPTS times; a failure part-way through a batch resends the whole batch, and holds
-back that learner's later batches until the next pass so they never arrive out of order.
+Simulated learners have no chat ID and are never queued, except a persona while a web simulator
+pane controls it (milestone 9). A row is retried until it is sent or has failed MAX_ATTEMPTS times;
+a failure part-way through a batch resends the whole batch, and holds back that learner's later
+batches until the next pass so they never arrive out of order.
 
 Rows are re-read just before each message is sent, and again before a message's file, so a learner
 deleted meanwhile receives nothing more, and score lines are rendered from the owner's current
@@ -60,12 +61,13 @@ class ScoreLine:
 
 def enqueue(session: Session, learner: Learner, replies: list[Reply], *, key: str, now: datetime,
             scores: list[ScoreLine] = (), expires_at: datetime | None = None) -> bool:
-    """Queue `replies` for one real learner; False if the learner can't receive them or `key` was used.
+    """Queue `replies` for one learner who receives messages; False if they can't or `key` was used.
 
     `now` orders deliveries, so callers pass a fresh clock reading for each batch. A batch with
     `expires_at` is never sent once the virtual clock reaches it.
     """
-    if learner.is_simulated or not learner.channel_chat_id or not replies:
+    # A persona has no chat ID even while a web simulator pane controls it: the web channel delivers by learner.
+    if not learner.receives_messages or not (learner.channel_chat_id or learner.is_simulated) or not replies:
         return False
     payload = {"messages": [_message(reply) for reply in replies],
                "scores": [{"message": score.message, "line": score.line, "learner_id": str(score.learner_id),

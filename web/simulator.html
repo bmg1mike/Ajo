@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ajo Web Simulator</title>
+<style>
+  :root {
+    --bg: #f3f4f6; --surface: #ffffff; --text: #111827; --muted: #6b7280; --line: #e5e7eb;
+    --accent: #0f766e; --accent-text: #ffffff; --bubble-in: #ffffff; --bubble-out: #d1fae5; --chat: #ece5dd;
+    --warn: #b45309; --error: #b91c1c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b0f14; --surface: #151b23; --text: #e5e7eb; --muted: #9ca3af; --line: #263040;
+      --accent: #14b8a6; --accent-text: #04201d; --bubble-in: #1f2937; --bubble-out: #134e4a; --chat: #0f141a;
+      --warn: #f59e0b; --error: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 16px;
+           background: var(--surface); border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 16px; margin: 0; }
+  #clock { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .console { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-left: auto; }
+  button { font: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line);
+           background: var(--surface); color: var(--text); padding: 5px 10px; }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .5; cursor: progress; }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  input, select { font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--line);
+                  border-radius: 8px; padding: 5px 8px; min-width: 0; }
+  #console-log { margin: 0 16px; padding: 8px 12px; background: var(--surface); border: 1px solid var(--line);
+                 border-top: 0; border-radius: 0 0 8px 8px; white-space: pre-wrap; max-height: 9em; overflow: auto;
+                 font-size: 13px; }
+  #console-log:empty { display: none; }
+  #console-log .buttons { margin-top: 6px; display: flex; gap: 6px; }
+  #gate { margin: 40px auto; max-width: 420px; padding: 20px; background: var(--surface);
+          border: 1px solid var(--line); border-radius: 12px; }
+  #gate form { display: flex; gap: 8px; margin-top: 12px; }
+  #gate input { flex: 1; }
+  .panes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 16px; }
+  @media (max-width: 980px) { .panes { grid-template-columns: minmax(0, 1fr); } }
+  .pane { display: flex; flex-direction: column; height: calc(100vh - 150px); min-height: 420px;
+          background: var(--surface); border: 1px solid var(--line); border-radius: 18px; overflow: hidden; }
+  .pane-head { padding: 8px 10px; border-bottom: 1px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+  .pane-head select { width: 100%; }
+  .badge { font-size: 12px; color: var(--muted); min-height: 1.2em; }
+  .badge.controlled { color: var(--warn); }
+  .chat { flex: 1; overflow-y: auto; padding: 10px; background: var(--chat); display: flex; flex-direction: column; gap: 6px; }
+  .msg { max-width: 88%; padding: 6px 9px; border-radius: 10px; background: var(--bubble-in);
+         white-space: pre-wrap; overflow-wrap: anywhere; box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+  .msg.out { align-self: flex-end; background: var(--bubble-out); }
+  .msg.note { align-self: center; background: transparent; box-shadow: none; color: var(--muted); font-size: 12px; }
+  .msg.error { align-self: center; background: transparent; box-shadow: none; color: var(--error); font-size: 12px; }
+  .msg.queued { border-left: 3px solid var(--accent); }
+  .msg .buttons { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+  .msg .buttons button { width: 100%; text-align: center; }
+  .msg audio { display: block; margin-top: 4px; max-width: 100%; }
+  .msg a { color: var(--accent); }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px 0; }
+  .chips button { padding: 2px 8px; font-size: 12px; border-radius: 12px; }
+  form.composer { display: flex; gap: 6px; padding: 8px; }
+  form.composer input { flex: 1; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Ajo web simulator</h1>
+  <span id="clock" title="Virtual time">–</span>
+  <div class="console hidden" id="console">
+    <button data-command="seed_demo">Seed demo</button>
+    <button data-command="simulate_day" class="primary">Simulate day</button>
+    <button data-command="simulate_week">Simulate week</button>
+    <button data-command="demo_status">Demo status</button>
+    <button data-command="reset_demo">Reset demo</button>
+    <button id="forget" title="Forget the access token in this tab">Lock</button>
+  </div>
+</header>
+<div id="console-log" aria-live="polite"></div>
+
+<section id="gate" class="hidden">
+  <strong>Enter the simulator's WEB_TOKEN</strong>
+  <div class="badge">It stays in this browser tab only.</div>
+  <form id="gate-form">
+    <input id="token" type="password" autocomplete="off" placeholder="WEB_TOKEN" required>
+    <button class="primary">Open</button>
+  </form>
+  <div id="gate-error" class="badge" style="color: var(--error)"></div>
+</section>
+
+<main class="panes hidden" id="panes"></main>
+
+<template id="pane-template">
+  <section class="pane">
+    <div class="pane-head">
+      <select aria-label="Learner"></select>
+      <div class="badge"></div>
+    </div>
+    <div class="chat" aria-live="polite"></div>
+    <div class="chips">
+      <button type="button" data-text="/lesson">/lesson</button>
+      <button type="button" data-text="/progress">/progress</button>
+      <button type="button" data-text="/pack">/pack</button>
+      <button type="button" data-text="/help">/help</button>
+    </div>
+    <form class="composer">
+      <input type="text" maxlength="4096" placeholder="Message" autocomplete="off">
+      <button class="primary">Send</button>
+    </form>
+  </section>
+</template>
+
+<script>
+"use strict";
+const PANES = 3;
+const POLL_MS = 2000;
+const TOKEN_KEY = "ajo-sim-token";
+const PANES_KEY = "ajo-sim-panes";
+const NEW = "new";
+
+const storage = {  // sessionStorage can be unavailable (private windows, blocked storage): carry on without it
+  get(key) { try { return sessionStorage.getItem(key); } catch { return null; } },
+  set(key, value) { try { sessionStorage.setItem(key, value); } catch { /* not remembered */ } },
+  remove(key) { try { sessionStorage.removeItem(key); } catch { /* nothing stored */ } },
+};
+
+let token = storage.get(TOKEN_KEY);
+let learners = [];
+const panes = [];
+
+class Unauthorized extends Error {}
+
+async function api(method, path, body) {
+  const response = await fetch(path, {
+    method,
+    headers: { "Authorization": `Bearer ${token}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (response.status === 401) throw new Unauthorized();
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const detail = typeof data.detail === "string" ? data.detail : JSON.stringify(data.detail ?? response.statusText);
+    const error = new Error(detail);
+    error.status = response.status;
+    throw error;
+  }
+  return data;
+}
+
+function randomGuest() {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function element(tag, className, text) {
+  const node = document.createElement(tag);
+  if (className) node.className = className;
+  if (text !== undefined) node.textContent = text;  // never innerHTML: messages are untrusted text
+  return node;
+}
+
+function base64Blob(data, type) {
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type });
+}
+
+function learnerById(id) { return learners.find((learner) => learner.id === id); }
+
+function label(learner) {
+  const tags = [learner.language];
+  if (learner.persona) tags.push(learner.controlled ? "persona, controlled" : "persona");
+  return `${learner.first_name} (${tags.join(", ")})`;
+}
+
+class Pane {
+  constructor(index) {
+    this.index = index;
+    this.root = document.getElementById("pane-template").content.firstElementChild.cloneNode(true);
+    this.select = this.root.querySelector("select");
+    this.badge = this.root.querySelector(".badge");
+    this.chat = this.root.querySelector(".chat");
+    this.input = this.root.querySelector("form.composer input");
+    this.learnerId = null;  // set once the pane speaks for an existing learner
+    this.guest = null;  // set while a new learner is onboarding
+    this.since = 0;
+    this.busy = false;
+    this.select.addEventListener("change", () => this.choose(this.select.value));
+    this.root.querySelector("form.composer").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const text = this.input.value.trim();
+      if (text) { this.input.value = ""; this.send({ text }, text); }
+    });
+    this.root.querySelectorAll(".chips button").forEach((button) =>
+      button.addEventListener("click", () => this.send({ text: button.dataset.text }, button.dataset.text)));
+  }
+
+  get learner() { return this.learnerId ? learnerById(this.learnerId) : null; }
+  get active() { return Boolean(this.learnerId || this.guest); }
+
+  renderOptions() {
+    const current = this.learnerId ?? (this.guest ? NEW : "");
+    this.select.replaceChildren(new Option("— Choose a learner —", ""), new Option("➕ New learner (onboard with /start)", NEW));
+    const personas = learners.filter((learner) => learner.persona);
+    const others = learners.filter((learner) => !learner.persona);
+    for (const [title, group] of [["Personas", personas], ["Web learners", others]]) {
+      if (!group.length) continue;
+      const optgroup = document.createElement("optgroup");
+      optgroup.label = title;
+      for (const learner of group) optgroup.append(new Option(label(learner), learner.id));
+      this.select.append(optgroup);
+    }
+    this.select.value = current;
+    const learner = this.learner;
+    this.badge.className = "badge" + (learner?.controlled ? " controlled" : "");
+    this.badge.textContent = learner?.persona
+      ? (learner.controlled ? "You are speaking for this persona; its automated behavior is paused." : "Not controlled")
+      : this.guest ? "New learner: send /start" : learner ? "Web learner" : "";
+  }
+
+  async choose(value) {
+    const previous = this.learner;
+    this.learnerId = null;
+    this.guest = null;
+    this.since = 0;
+    this.chat.replaceChildren();
+    if (previous?.persona && !panes.some((pane) => pane !== this && pane.learnerId === previous.id)) {
+      await this.control(previous.id, false);
+    }
+    if (value === NEW) {
+      this.guest = randomGuest();
+      this.note("New learner. Send /start to begin onboarding.");
+    } else if (value) {
+      this.learnerId = value;
+      const learner = learnerById(value);
+      if (learner?.persona) await this.control(value, true);
+      this.note(learner?.persona ? `Speaking for ${learner.first_name}. Their messages appear below.`
+                                 : "Messages delivered to this learner appear below.");
+    }
+    save();
+    try {
+      await refreshLearners();
+      if (this.learnerId) await this.poll();
+    } catch (error) {
+      this.error(error);
+    }
+  }
+
+  async control(learnerId, control) {
+    try {
+      await api("POST", "/web/control", { learner_id: learnerId, control });
+    } catch (error) {
+      this.error(error);
+    }
+  }
+
+  async send(body, shown) {
+    if (!this.active) { this.note("Choose a learner first."); return; }
+    this.add({ text: shown }, "out");
+    try {
+      const data = await api("POST", "/web/message",
+                             { ...(this.learnerId ? { learner_id: this.learnerId } : { guest: this.guest }), ...body });
+      data.replies.forEach((reply) => this.add(reply));
+      if (data.learner_id !== this.learnerId) await this.identityChanged(data.learner_id);
+    } catch (error) {
+      this.error(error);
+    }
+  }
+
+  async identityChanged(learnerId) {
+    if (learnerId) {  // onboarding finished: from now on the pane polls for this learner
+      this.learnerId = learnerId;
+      this.guest = null;
+    } else {  // the learner deleted their data
+      this.learnerId = null;
+      this.guest = null;
+      this.note("This learner no longer exists. Choose another, or start a new learner.");
+    }
+    this.since = 0;
+    save();
+    await refreshLearners().catch((error) => this.error(error));
+  }
+
+  async poll() {
+    if (!this.learnerId || this.busy) return;
+    this.busy = true;
+    try {
+      const data = await api("GET", `/web/poll?learner_id=${encodeURIComponent(this.learnerId)}&since=${this.since}`);
+      data.messages.forEach((message) => this.add(message, "queued"));
+      this.since = data.since;
+    } catch (error) {
+      if (error.status === 404) await this.identityChanged(null); else throw error;
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  add(message, kind = "") {
+    const bubble = element("div", `msg ${kind}`.trim());
+    if (message.text) bubble.append(element("div", "", message.text));
+    if (message.voice) {
+      const audio = element("audio");
+      audio.controls = true;
+      audio.src = URL.createObjectURL(base64Blob(message.voice.data, "audio/ogg"));
+      bubble.append(audio);
+    }
+    if (message.file) {
+      const blob = base64Blob(message.file.data, "text/plain");
+      const link = element("a", "", `📎 ${message.file.filename} (${(blob.size / 1024).toFixed(1)} KB)`);
+      link.href = URL.createObjectURL(blob);
+      link.download = message.file.filename;
+      bubble.append(link);
+    }
+    if (message.buttons?.length) {
+      const row = element("div", "buttons");
+      for (const button of message.buttons) {
+        const tap = element("button", "", button.text);
+        tap.type = "button";
+        tap.addEventListener("click", () => this.send({ payload: button.payload }, `› ${button.text}`));
+        row.append(tap);
+      }
+      bubble.append(row);
+    }
+    this.chat.append(bubble);
+    this.chat.scrollTop = this.chat.scrollHeight;
+  }
+
+  note(text) { this.add({ text }, "note"); }
+  error(error) {
+    if (error instanceof Unauthorized) { lock("The token was refused."); return; }
+    this.add({ text: `⚠️ ${error.message}` }, "error");
+  }
+}
+
+function save() {
+  storage.set(PANES_KEY, JSON.stringify(panes.map((pane) => ({ learnerId: pane.learnerId, guest: pane.guest }))));
+}
+
+async function refreshLearners() {
+  const data = await api("GET", "/web/learners");
+  learners = data.learners;
+  document.getElementById("clock").textContent = `Virtual time: ${new Date(data.virtual_time).toUTCString()}`;
+  panes.forEach((pane) => pane.renderOptions());
+}
+
+const consoleLog = document.getElementById("console-log");
+
+function showConsole(replies) {
+  consoleLog.replaceChildren();
+  for (const reply of replies) {
+    consoleLog.append(element("div", "", reply.text));
+    if (reply.buttons?.length) {
+      const row = element("div", "buttons");
+      for (const button of reply.buttons) {
+        const tap = element("button", "", button.text);
+        tap.addEventListener("click", () => admin({ payload: button.payload }));
+        row.append(tap);
+      }
+      consoleLog.append(row);
+    }
+  }
+}
+
+async function admin(body) {
+  const buttons = document.querySelectorAll("#console button, #console-log button");
+  buttons.forEach((button) => { button.disabled = true; });
+  consoleLog.textContent = "Working…";
+  try {
+    const data = await api("POST", "/web/admin", body);
+    showConsole(data.replies);
+    await tick();
+  } catch (error) {
+    if (error instanceof Unauthorized) lock("The token was refused.");
+    else consoleLog.textContent = `⚠️ ${error.message}`;
+  } finally {
+    buttons.forEach((button) => { button.disabled = false; });
+  }
+}
+
+let ticking = false;
+async function tick() {
+  if (!token || ticking) return;
+  ticking = true;
+  try {
+    await refreshLearners();
+    for (const pane of panes) await pane.poll();
+  } catch (error) {
+    if (error instanceof Unauthorized) lock("The token was refused.");
+  } finally {
+    ticking = false;
+  }
+}
+
+function lock(message) {
+  token = null;
+  storage.remove(TOKEN_KEY);
+  document.getElementById("gate-error").textContent = message ?? "";
+  document.getElementById("gate").classList.remove("hidden");
+  document.getElementById("panes").classList.add("hidden");
+  document.getElementById("console").classList.add("hidden");
+}
+
+async function open() {
+  document.getElementById("gate").classList.add("hidden");
+  document.getElementById("panes").classList.remove("hidden");
+  document.getElementById("console").classList.remove("hidden");
+  try {
+    await refreshLearners();
+  } catch (error) {
+    lock(error instanceof Unauthorized ? "The token was refused." : error.message);
+    return;
+  }
+  let saved = [];
+  try { saved = JSON.parse(storage.get(PANES_KEY) ?? "[]"); } catch { saved = []; }
+  for (const [index, pane] of panes.entries()) {
+    const state = saved[index] ?? {};
+    if (state.learnerId && learnerById(state.learnerId)) {
+      await pane.choose(state.learnerId);  // takes control again if it is a persona
+    } else if (state.guest) {
+      pane.guest = state.guest;
+      pane.note("New learner. Send /start to begin onboarding.");
+    }
+    pane.renderOptions();
+  }
+}
+
+for (let index = 0; index < PANES; index++) {
+  const pane = new Pane(index);
+  panes.push(pane);
+  document.getElementById("panes").append(pane.root);
+}
+
+document.querySelectorAll("#console button[data-command]").forEach((button) =>
+  button.addEventListener("click", () => admin({ command: button.dataset.command })));
+document.getElementById("forget").addEventListener("click", () => lock());
+document.getElementById("gate-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  token = document.getElementById("token").value.trim();
+  storage.set(TOKEN_KEY, token);
+  open();
+});
+
+// Hand controlled personas back to the simulation when the page goes away; reopening takes control again.
+window.addEventListener("pagehide", () => {
+  if (!token) return;
+  const held = new Set(panes.map((pane) => pane.learner).filter((learner) => learner?.persona).map((l) => l.id));
+  for (const learnerId of held) {
+    fetch("/web/control", {
+      method: "POST", keepalive: true,
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ learner_id: learnerId, control: false }),
+    }).catch(() => {});
+  }
+});
+
+if (token) open(); else lock();
+setInterval(tick, POLL_MS);
+</script>
+</body>
+</html>

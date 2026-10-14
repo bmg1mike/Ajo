@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.models import Channel, FeedEvent, Learner, LLMCache, Onboarding, OutboundDelivery, QALog
+from app.models import Channel, FeedEvent, Learner, LLMCache, Onboarding, OutboundDelivery, QALog, WebMessage
 
 
 def channel_hash(channel: Channel, user_id: str, salt: str) -> str:
@@ -108,6 +108,7 @@ def delete_learner(session: Session, learner_id: UUID, *, confirmed: bool = Fals
         (OutboundDelivery, ("payload", "channel_chat_id", "external_message_id", "deduplication_key")),
         (QALog, ("question_text", "fallback_reason")),
         (LLMCache, ("response",)),
+        (WebMessage, ("payload",)),  # other web learners' delivered circle updates may name this learner
     )
     for model, fields in fields_by_model:
         for row in session.scalars(select(model)):

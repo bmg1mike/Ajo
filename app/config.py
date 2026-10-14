@@ -6,6 +6,8 @@ from urllib.parse import urlparse
 from pydantic import SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+MIN_WEB_TOKEN_CHARS = 16
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -49,6 +51,10 @@ class Settings(BaseSettings):
     demo_goal: str = "jamb_bio"  # the goal /seed_demo uses when the admin has not onboarded
     # Hand-checked opportunities for weekly payouts, synced into the database at startup.
     opportunities_file: Path = Path("data/opportunities.json")
+    # The web simulator (GET /sim) can speak for any web learner and run the admin commands, so it
+    # is off by default and every /web request must carry WEB_TOKEN as a bearer token.
+    web_enabled: bool = False
+    web_token: SecretStr = SecretStr("")
 
     @field_validator("hash_salt")
     @classmethod
@@ -101,6 +107,9 @@ class Settings(BaseSettings):
             raise ValueError("GROQ_API_KEY is required when Groq STT is enabled")
         if self.stt_enabled and self.stt_backend == "local" and not self.stt_local_model.strip():
             raise ValueError("STT_LOCAL_MODEL is required when local STT is enabled")
+        if self.web_enabled and len(self.web_token.get_secret_value().strip()) < MIN_WEB_TOKEN_CHARS:
+            raise ValueError(f"WEB_TOKEN of at least {MIN_WEB_TOKEN_CHARS} characters is required when the web "
+                             "simulator is enabled")
         if self.tts_enabled and not self.tts_model_en.strip():
             raise ValueError("TTS_MODEL_EN is required when TTS is enabled: English is the audio fallback")
         return self

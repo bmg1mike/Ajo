@@ -10,6 +10,7 @@ the virtual lesson time or an admin sent /simulate_day. Its steps, in order:
    scheduler and /simulate_day never process the same circle and virtual day twice.
 3. Queue the lesson for every real member.
 4. Persona actions in a seeded circle: check-ins and answers, then Chidi's replies to questions.
+   A persona that a web simulator pane controls does nothing on its own; the pane acts for it.
 5. Inactivity check: members first detected as quiet today (`app/core/nudges.py`).
 6. Queue each real member's batched circle update, carrying a nudge prompt for each newly quiet
    member to everyone else in the circle.
@@ -47,7 +48,7 @@ from app.core.replies import Reply
 from app.db import dialect_insert
 from app.models import (
     Circle, CircleMember, ClockState, DailyRun, FeedEvent, Goal, Language, Learner, Lesson, Nudge, OutboundDelivery,
-    RunTrigger, Simulation, SyllabusTopic, WeeklyPayout,
+    RunTrigger, Simulation, SyllabusTopic, WebMessage, WeeklyPayout,
 )
 from app.sim import personas
 
@@ -146,7 +147,9 @@ class DemoEngine:
         simulation = session.get(Simulation, circle.id)
         if simulation is None:
             return 0
-        members = personas.circle_personas(session, circle, session.get(Goal, circle.goal_id), self.salt)
+        members = [(persona, learner) for persona, learner
+                   in personas.circle_personas(session, circle, session.get(Goal, circle.goal_id), self.salt)
+                   if learner.controlled_at is None]  # a web pane is speaking for the others
         if lesson is not None:
             for persona, learner in members:
                 if personas.checks_in(session, persona, learner, day, today):
@@ -156,11 +159,12 @@ class DemoEngine:
                    for persona, learner in members)
 
     def run_scheduled(self) -> tuple[list[DayReport], bool]:
-        """The scheduler's daily run for every circle with a real member; (reports, whether any circle failed)."""
+        """The scheduler's daily run for every circle with a real member (or a persona a web pane controls);
+        (reports, whether any circle failed)."""
         with self.sessions() as session:
             circle_ids = session.scalars(
                 select(CircleMember.circle_id).join(Learner, Learner.id == CircleMember.learner_id)
-                .where(Learner.is_simulated.is_(False)).distinct()
+                .where(Learner.receives_messages).distinct()
             ).all()
         reports, failed = [], False
         for circle_id in circle_ids:
@@ -326,7 +330,8 @@ class DemoEngine:
             # Lessons cascade to questions and answers.
             for model in (DailyRun, Lesson, FeedEvent, Nudge, Simulation, WeeklyPayout):
                 session.execute(delete(model).where(model.circle_id == circle.id))
-            session.execute(delete(OutboundDelivery).where(OutboundDelivery.learner_id.in_(member_ids)))
+            for model in (OutboundDelivery, WebMessage):  # undelivered messages, and web panes' delivered ones
+                session.execute(delete(model).where(model.learner_id.in_(member_ids)))
             session.execute(delete(Learner).where(Learner.id.in_(persona_ids)))
             session.execute(update(CircleMember).where(CircleMember.circle_id == circle.id)
                             .values(last_checkin_at=None, streak_days=0, feed_delivered_at=None, feed_cursor_id=None,

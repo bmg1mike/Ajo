@@ -5,9 +5,10 @@ from uuid import UUID, uuid4
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON, BigInteger, Boolean, CheckConstraint, Date, DateTime, Enum, Float,
-    ForeignKey, Integer, LargeBinary, String, Text, TypeDecorator, UniqueConstraint, Uuid,
+    ForeignKey, Integer, LargeBinary, String, Text, TypeDecorator, UniqueConstraint, Uuid, or_,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -107,6 +108,7 @@ class Learner(Identified, Base):
     __table_args__ = (
         CheckConstraint("NOT is_simulated OR channel_chat_id IS NULL", name="simulated_no_chat"),
         CheckConstraint("difficulty BETWEEN 1 AND 3", name="learner_difficulty"),
+        CheckConstraint("is_simulated OR controlled_at IS NULL", name="controlled_persona_only"),
     )
     channel: Mapped[Channel] = mapped_column(enum_type(Channel, "channel"))
     channel_user_hash: Mapped[str] = mapped_column(String(64), unique=True)
@@ -120,6 +122,19 @@ class Learner(Identified, Base):
     # When the learner agreed to the consent message; null for simulated personas.
     consented_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
+    # Personas only: when a web simulator pane took control (milestone 9). While set, the persona's
+    # automated behavior is paused and it is sent what a real member is sent, through its pane.
+    controlled_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+
+    @hybrid_property
+    def receives_messages(self) -> bool:
+        """Real learners, and personas while a web simulator pane controls them."""
+        return not self.is_simulated or self.controlled_at is not None
+
+    @receives_messages.inplace.expression
+    @classmethod
+    def _receives_messages_expression(cls):
+        return or_(cls.is_simulated.is_(False), cls.controlled_at.is_not(None))
 
 
 class Onboarding(Base):
@@ -369,3 +384,17 @@ class OutboundDelivery(Identified, Base):
     failed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     # Virtual time from which the row must no longer be sent, e.g. the end of a nudge's day; null: never.
     expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+
+
+class WebMessage(Base):
+    """A message the outbox delivered to a web simulator learner; their pane polls for it (milestone 9).
+
+    The serial ID is the poll cursor. Rows are written only by the outbox's delivery job, one at a
+    time, so a learner's IDs grow in the order their messages were sent. Files and voice notes are
+    stored base64-encoded as {"filename", "data"}, like queued attachments.
+    """
+    __tablename__ = "web_messages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    learner_id: Mapped[UUID] = mapped_column(ForeignKey("learners.id", ondelete="CASCADE"), index=True)
+    payload: Mapped[dict] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
