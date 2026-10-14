@@ -3,10 +3,14 @@
 Commands: /start, /lesson, /ask, /language, /share_scores, /delete_me and /help. Any other text from
 an onboarded learner is a question for QA (spec section 7.4). Raw channel user IDs are hashed
 on arrival and never stored.
+
+The demo admin commands (spec section 9.3) work only for Telegram user IDs listed in ADMIN_IDS,
+checked against the raw ID before it is hashed. Everyone else is refused, onboarded or not.
 """
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Protocol
 from uuid import UUID
 
 from sqlalchemy import select
@@ -21,6 +25,10 @@ from app.models import Channel, Language, Learner, Onboarding
 
 # Spec section 10.2 commands from later milestones; until they exist they say so rather than act as questions.
 COMING_SOON = frozenset({"progress", "pack"})
+
+# Demo admin commands (spec section 9.3) and their button payloads.
+ADMIN_COMMANDS = frozenset({"seed_demo", "simulate_day", "simulate_week", "reset_demo", "demo_status"})
+ADMIN_PREFIX = "adm:"
 
 _COMMAND = re.compile(r"/([A-Za-z0-9_]{1,32})(?:@\w+)?(?:\s+(.*))?", re.DOTALL)
 
@@ -46,15 +54,56 @@ def parse_command(text: str) -> tuple[str | None, str]:
     return match.group(1).lower(), (match.group(2) or "").strip()
 
 
+class AdminCommands(Protocol):
+    """The demo admin commands. They manage their own transactions: they advance the clock and generate lessons."""
+
+    def command(self, command: str, argument: str, user_hash: str) -> list[Reply]: ...
+    def button(self, payload: str, user_hash: str) -> list[Reply]: ...
+
+
 class Conversation:
     def __init__(self, sessions: sessionmaker[Session], clock: Clock, qa_service: qa.QAService,
-                 lesson_service: lessons.LessonService, *, salt: str) -> None:
+                 lesson_service: lessons.LessonService, *, salt: str, admin: AdminCommands | None = None,
+                 admin_ids: frozenset[int] = frozenset()) -> None:
         self.sessions, self.clock, self.qa, self.lessons, self.salt = sessions, clock, qa_service, lesson_service, salt
+        self.admin, self.admin_ids = admin, admin_ids
 
     def handle(self, inbound: Inbound) -> list[Reply]:
         """Process one message or button tap in a single transaction. Blocks on LLM calls."""
+        admin_replies = self._admin_request(inbound)
+        if admin_replies is not None:
+            return admin_replies
         with self.sessions.begin() as session:
             return self._route(session, inbound)
+
+    def is_admin(self, inbound: Inbound) -> bool:
+        return (inbound.channel == Channel.TELEGRAM and inbound.user_id.isdigit()
+                and int(inbound.user_id) in self.admin_ids)
+
+    def _admin_request(self, inbound: Inbound) -> list[Reply] | None:
+        """Replies to an admin command or button, or None if this is not one."""
+        if inbound.payload is not None:
+            if not inbound.payload.startswith(ADMIN_PREFIX):
+                return None
+            command, argument = None, ""
+        elif inbound.text is not None:
+            command, argument = parse_command(inbound.text)
+            if command not in ADMIN_COMMANDS:
+                return None
+        else:
+            return None
+        user_hash = channel_hash(inbound.channel, inbound.user_id, self.salt)
+        if self.admin is None or not self.is_admin(inbound):
+            return [Reply(t("admin.forbidden", self._language(user_hash)))]
+        if command is None:
+            return self.admin.button(inbound.payload, user_hash)
+        return self.admin.command(command, argument, user_hash)
+
+    def _language(self, user_hash: str) -> Language:
+        with self.sessions() as session:
+            learner = session.scalar(select(Learner).where(Learner.channel_user_hash == user_hash))
+            state = session.get(Onboarding, user_hash) if learner is None else None
+        return learner.language if learner else state.language if state else Language.EN
 
     def _route(self, session: Session, inbound: Inbound) -> list[Reply]:
         user_hash = channel_hash(inbound.channel, inbound.user_id, self.salt)

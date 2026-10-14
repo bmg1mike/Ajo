@@ -133,15 +133,19 @@ def telegram_polling(application: FastAPI, *, request: BaseRequest | None = None
         await bot_app.initialize()
         try:
             application.state.adapters.register(bot_app.bot_data["adapter"])
-            await bot_app.start()
             try:
-                await bot_app.updater.start_polling(allowed_updates=ALLOWED_UPDATES)
+                await bot_app.start()
                 try:
-                    yield
+                    await bot_app.updater.start_polling(allowed_updates=ALLOWED_UPDATES)
+                    try:
+                        yield
+                    finally:
+                        await bot_app.updater.stop()
                 finally:
-                    await bot_app.updater.stop()
+                    await bot_app.stop()
             finally:
-                await bot_app.stop()
+                # Queued deliveries wait for the next start instead of failing against a stopped bot.
+                application.state.adapters.unregister(Channel.TELEGRAM)
         finally:
             await bot_app.shutdown()
 

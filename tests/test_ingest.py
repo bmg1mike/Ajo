@@ -11,7 +11,7 @@ from pydantic import ValidationError
 from sqlalchemy import delete, func, select
 
 from app.core import embeddings
-from app.models import Chunk, Circle, Goal, Lesson, PregeneratedLesson, Question, Source, SyllabusTopic
+from app.models import Chunk, Circle, Goal, Learner, Lesson, PregeneratedLesson, Question, Source, SyllabusTopic
 from ingest import ingest
 from ingest.catalog import load_catalog, load_syllabus
 from ingest.chunking import chunk_section
@@ -69,7 +69,8 @@ def build(paths: dict[str, Path]):
 def clean_corpus(sessions):
     def wipe():
         with sessions.begin() as session:
-            for model in (Question, Lesson, PregeneratedLesson, Circle, Chunk, Source, SyllabusTopic, Goal):
+            # Learners (from other test modules sharing the database) hold goals; their rows cascade.
+            for model in (Question, Lesson, PregeneratedLesson, Learner, Circle, Chunk, Source, SyllabusTopic, Goal):
                 session.execute(delete(model))
     wipe()
     yield

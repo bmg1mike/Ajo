@@ -15,8 +15,10 @@ from app.core.lessons import LessonService
 from app.core.qa import QAService
 from app.db import build_engine, session_factory
 from app.llm.client import LLMClient
+from app.scheduler import scheduler_service
+from app.sim.engine import DemoEngine
 
-# Future polling/scheduler services supply async context managers so their
+# Background services (the scheduler) supply async context managers so their
 # tasks are stopped before the database pool is disposed, even on startup failure.
 BackgroundService = Callable[[FastAPI], AsyncContextManager[None]]
 
@@ -39,9 +41,15 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
             application.state.qa = QAService(embedder, llm, application.state.clock,
                                              min_score=configured.retrieval_min_score)
             application.state.lessons = LessonService(embedder, llm, application.state.clock)
+            salt = configured.hash_salt.get_secret_value()
+            application.state.demo = DemoEngine(application.state.sessions, application.state.clock,
+                                                application.state.lessons, embedder, salt=salt,
+                                                min_score=configured.retrieval_min_score,
+                                                goal_code=configured.demo_goal)
             application.state.conversation = Conversation(application.state.sessions, application.state.clock,
                                                           application.state.qa, application.state.lessons,
-                                                          salt=configured.hash_salt.get_secret_value())
+                                                          salt=salt, admin=application.state.demo,
+                                                          admin_ids=configured.admin_user_ids)
             with application.state.sessions() as session:
                 initialize(session)
             async with AsyncExitStack() as stack:
@@ -71,4 +79,5 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
     return application
 
 
-app = create_app()
+# The served app delivers queued messages and, with SCHEDULER_ENABLED, runs daily jobs. Tests opt in.
+app = create_app(services=[scheduler_service])

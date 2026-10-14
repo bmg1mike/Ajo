@@ -38,7 +38,7 @@ Python 3.12, FastAPI, SQLAlchemy and Alembic, PostgreSQL 16 with pgvector, and l
 
 ## Status
 
-The **foundation** is complete: configuration, the database schema and migrations, the virtual clock, privacy helpers (salted identity hashing and learner deletion), and the adapter registry. **Corpus ingestion** is complete too: about 200 pages of OpenStax Biology, chunked, embedded locally and mapped to 10 JAMB topics. **Cited question answering** is complete: retrieval, a citation-enforced answer pipeline with a claim-support check, the library fallback with an "ask my circle" option, and a 20-question evaluation set. **Telegram onboarding** works: consent, language, first name, goal, and a place in the demo circle. After that, learners can ask questions, change their language, opt in to sharing scores and delete their data. Yoruba and Pidgin menu text is drafted but shows only after native-speaker review. **Daily lessons** work: `/lesson` posts a cited lesson with a worked example and two questions, translated into the learner's language. A wrong answer gets a private explanation, the source and an easier question. Every generated lesson is validated, and a pre-generated lesson is the fallback. The next steps are simulation, nudges and payouts. See [plan.md](plan.md) for the milestone checklist.
+The **foundation** is complete: configuration, the database schema and migrations, the virtual clock, privacy helpers (salted identity hashing and learner deletion), and the adapter registry. **Corpus ingestion** is complete too: about 200 pages of OpenStax Biology, chunked, embedded locally and mapped to 10 JAMB topics. **Cited question answering** is complete: retrieval, a citation-enforced answer pipeline with a claim-support check, the library fallback with an "ask my circle" option, and a 20-question evaluation set. **Telegram onboarding** works: consent, language, first name, goal, and a place in the demo circle. After that, learners can ask questions, change their language, opt in to sharing scores and delete their data. Yoruba and Pidgin menu text is drafted but shows only after native-speaker review. **Daily lessons** work: `/lesson` posts a cited lesson with a worked example and two questions, translated into the learner's language. A wrong answer gets a private explanation, the source and an easier question. Every generated lesson is validated, and a pre-generated lesson is the fallback. **Simulation** works too: admins can seed the demo circle with Chidi, Halima and Tunde, then play out virtual days with `/simulate_day` or `/simulate_week`. Each day posts the lesson, runs the personas (repeatable for a given seed) and sends every member one batched circle update. An optional scheduler posts lessons at the virtual lesson time. The next steps are nudges and payouts. See [plan.md](plan.md) for the milestone checklist.
 
 ## Getting started
 
@@ -74,6 +74,18 @@ uv run python -m app.core.lessons --pregenerate
 ```
 
 To run the Telegram bot, create a bot with [@BotFather](https://t.me/BotFather) and set `TELEGRAM_ENABLED=true` and `TELEGRAM_BOT_TOKEN` in `.env`. Then run the corpus ingestion above and start the server. The bot long-polls, so it needs no public URL. Send `/start` to the bot in a private chat.
+
+To run the demo, put your numeric Telegram user ID in `ADMIN_IDS`, onboard with `/start`, then:
+
+```text
+/seed_demo 42     # add Chidi, Halima and Tunde to the demo circle (the seed makes their behavior repeatable)
+/simulate_day     # advance the virtual clock 24 hours: lesson, persona check-ins, one circle update per member
+/simulate_week    # seven simulated days
+/demo_status      # virtual date, members and last check-ins
+/reset_demo       # wipe circle state and the clock offset (asks to confirm); learners and the library stay
+```
+
+Set `SCHEDULER_ENABLED=true` to post each day's lesson automatically when the virtual clock passes `LESSON_TIME` (UTC). A day is processed once whether the scheduler or `/simulate_day` reaches it first.
 
 Yoruba and Pidgin menu text waits for a native speaker. Print a review sheet with `uv run python -m app.core.i18n --review yo` (or `pcm`). Once the sheet is signed off, add the language to `REVIEWED` in `app/core/i18n.py`.
 

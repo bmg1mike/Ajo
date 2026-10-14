@@ -342,6 +342,163 @@ STRINGS: dict[str, dict[Language, str]] = {
         Language.YO: "O ti dáhùn gbogbo ìbéèrè ẹ̀kọ́ yìí tẹ́lẹ̀.",
         Language.PCM: "You don already answer all the questions for this lesson.",
     },
+    # The batched circle feed (spec section 7.5): first names and check-in status; scores only after opt-in.
+    "feed.header": {Language.EN: "🔵 Circle update", Language.YO: "🔵 Ìròyìn ẹgbẹ́", Language.PCM: "🔵 Circle update"},
+    "feed.answered": {
+        Language.EN: "{name} ✅ answered today's questions",
+        Language.YO: "{name} ✅ ti dáhùn àwọn ìbéèrè òní",
+        Language.PCM: "{name} ✅ don answer today questions",
+    },
+    "feed.answered_score": {
+        Language.EN: "{name} ✅ answered today's questions ({correct}/{total} correct)",
+        Language.YO: "{name} ✅ ti dáhùn àwọn ìbéèrè òní ({correct}/{total} ló tọ̀nà)",
+        Language.PCM: "{name} ✅ don answer today questions ({correct}/{total} correct)",
+    },
+    "feed.checked_in": {
+        Language.EN: "{name} ✅ checked in today",
+        Language.YO: "{name} ✅ ti wọlé lónìí",
+        Language.PCM: "{name} ✅ don check in today",
+    },
+    "feed.checked_in_yesterday": {
+        Language.EN: "{name} ☑️ checked in yesterday",
+        Language.YO: "{name} ☑️ wọlé lánàá",
+        Language.PCM: "{name} ☑️ check in yesterday",
+    },
+    "feed.quiet_since": {
+        Language.EN: "{name} ⏳ no check-in since {weekday}",
+        Language.YO: "{name} ⏳ kò tíì wọlé láti {weekday}",
+        Language.PCM: "{name} ⏳ never check in since {weekday}",
+    },
+    "feed.quiet_long": {
+        Language.EN: "{name} ⏳ no check-in for over a week",
+        Language.YO: "{name} ⏳ kò tíì wọlé fún ohun tó ju ọ̀sẹ̀ kan lọ",
+        Language.PCM: "{name} ⏳ never check in for more than one week",
+    },
+    "feed.not_started": {
+        Language.EN: "{name} ⏳ no check-in yet",
+        Language.YO: "{name} ⏳ kò tíì wọlé rí",
+        Language.PCM: "{name} ⏳ never check in at all",
+    },
+    "feed.question": {
+        Language.EN: "❓ {name} asked the circle: {question}",
+        Language.YO: "❓ {name} bi ẹgbẹ́ ní ìbéèrè: {question}",
+        Language.PCM: "❓ {name} ask the circle: {question}",
+    },
+    "feed.more": {
+        Language.EN: "…and {count} more circle post(s) in your next update.",
+        Language.YO: "…àti {count} ìfiránṣẹ́ ẹgbẹ́ mìíràn nínú ìròyìn rẹ tó kàn.",
+        Language.PCM: "…and {count} more circle post(s) for your next update.",
+    },
+    "feed.reply": {
+        Language.EN: "💬 {name} replied to a circle question: I think this part of the book explains it.",
+        Language.YO: "💬 {name} dáhùn ìbéèrè ẹgbẹ́ kan: Mo rò pé apá ìwé yìí ló ṣàlàyé rẹ̀.",
+        Language.PCM: "💬 {name} reply one circle question: I think say this part of the book explain am.",
+    },
+    "weekday.0": {Language.EN: "Monday", Language.YO: "Ọjọ́ Ajé", Language.PCM: "Monday"},
+    "weekday.1": {Language.EN: "Tuesday", Language.YO: "Ọjọ́ Ìṣẹ́gun", Language.PCM: "Tuesday"},
+    "weekday.2": {Language.EN: "Wednesday", Language.YO: "Ọjọ́rú", Language.PCM: "Wednesday"},
+    "weekday.3": {Language.EN: "Thursday", Language.YO: "Ọjọ́bọ̀", Language.PCM: "Thursday"},
+    "weekday.4": {Language.EN: "Friday", Language.YO: "Ọjọ́ Ẹtì", Language.PCM: "Friday"},
+    "weekday.5": {Language.EN: "Saturday", Language.YO: "Ọjọ́ Àbámẹ́ta", Language.PCM: "Saturday"},
+    "weekday.6": {Language.EN: "Sunday", Language.YO: "Ọjọ́ Àìkú", Language.PCM: "Sunday"},
+    # Demo admin commands (spec section 9.3), for Telegram user IDs in ADMIN_IDS only
+    "admin.forbidden": {
+        Language.EN: "That command is only for demo admins.",
+        Language.YO: "Àwọn alábòójútó àfihàn nìkan ló lè lo àṣẹ yẹn.",
+        Language.PCM: "Na only demo admin fit use that command.",
+    },
+    "admin.no_goal": {
+        Language.EN: "There is no goal to seed yet. Build the library first: "
+                     "uv run python -m ingest.ingest --sources ingest/sources.yaml",
+        Language.YO: "Kò sí àfojúsùn kankan láti gbìn síbẹ̀. Kọ́kọ́ kọ́ ilé-ìkàwé náà: "
+                     "uv run python -m ingest.ingest --sources ingest/sources.yaml",
+        Language.PCM: "No goal dey to seed yet. Build the library first: "
+                      "uv run python -m ingest.ingest --sources ingest/sources.yaml",
+    },
+    "admin.seed_usage": {
+        Language.EN: "Send /seed_demo, or /seed_demo followed by a whole-number seed such as 42.",
+        Language.YO: "Fi /seed_demo ránṣẹ́, tàbí /seed_demo pẹ̀lú nọ́ńbà odidi bíi 42.",
+        Language.PCM: "Send /seed_demo, or /seed_demo with whole number seed like 42.",
+    },
+    "admin.seeded": {
+        Language.EN: "🌱 Demo ready: {circle} with {names}. Seed {seed}.\nSend /simulate_day to play the next day.",
+        Language.YO: "🌱 Àfihàn ti ṣetán: {circle} pẹ̀lú {names}. Irúgbìn {seed}.\n"
+                     "Fi /simulate_day ránṣẹ́ láti ṣe ọjọ́ tó kàn.",
+        Language.PCM: "🌱 Demo don ready: {circle} with {names}. Seed {seed}.\nSend /simulate_day to play the next day.",
+    },
+    "admin.join_first": {
+        Language.EN: "You're not in the circle yet. Send /start to join it as a learner.",
+        Language.YO: "O kò tíì sí nínú ẹgbẹ́ náà. Fi /start ránṣẹ́ láti dara pọ̀ gẹ́gẹ́ bí akẹ́kọ̀ọ́.",
+        Language.PCM: "You never dey the circle. Send /start to join am as learner.",
+    },
+    "admin.not_seeded": {
+        Language.EN: "There is no seeded demo circle yet. Send /seed_demo first.",
+        Language.YO: "Kò tíì sí ẹgbẹ́ àfihàn kankan. Kọ́kọ́ fi /seed_demo ránṣẹ́.",
+        Language.PCM: "No demo circle dey yet. Send /seed_demo first.",
+    },
+    "admin.day_done": {
+        Language.EN: "⏩ {date}: {lesson}\nChecked in: {names}\nQueued: {lessons} lesson post(s), {updates} circle update(s)",
+        Language.YO: "⏩ {date}: {lesson}\nÀwọn tó wọlé: {names}\nNí ìlà: {lessons} ẹ̀kọ́, {updates} ìròyìn ẹgbẹ́",
+        Language.PCM: "⏩ {date}: {lesson}\nWho check in: {names}\nFor queue: {lessons} lesson post(s), "
+                      "{updates} circle update(s)",
+    },
+    "admin.day_lesson": {
+        Language.EN: "Day {day}, {topic}",
+        Language.YO: "Ọjọ́ {day}, {topic}",
+        Language.PCM: "Day {day}, {topic}",
+    },
+    "admin.no_lesson": {
+        Language.EN: "no lesson (generation failed and the topic has no pre-generated lesson)",
+        Language.YO: "kò sí ẹ̀kọ́ (ṣíṣe ẹ̀kọ́ kùnà, kò sì sí ẹ̀kọ́ tí a ti pèsè sílẹ̀ fún kókó náà)",
+        Language.PCM: "no lesson (generation fail and no pre-generated lesson dey for the topic)",
+    },
+    "admin.already_ran": {
+        Language.EN: "The daily jobs for {date} had already run, so nothing was repeated.",
+        Language.YO: "Iṣẹ́ ojoojúmọ́ fún {date} ti ṣẹlẹ̀ tẹ́lẹ̀, nítorí náà a kò tún un ṣe.",
+        Language.PCM: "Daily jobs for {date} don already run, so nothing repeat.",
+    },
+    "admin.nobody": {Language.EN: "nobody", Language.YO: "kò sí ẹnìkan", Language.PCM: "nobody"},
+    "admin.never": {Language.EN: "never", Language.YO: "kò tíì sí rí", Language.PCM: "never"},
+    "admin.payout_pending": {
+        Language.EN: "Weekly payouts are not available yet, so none was sent.",
+        Language.YO: "Ẹ̀bùn ọ̀sẹ̀ kò tíì sí, nítorí náà a kò fi ìkankan ránṣẹ́.",
+        Language.PCM: "Weekly payout never ready, so we no send any.",
+    },
+    "admin.status": {
+        Language.EN: "🧪 Demo status\nVirtual time: {time} (clock {offset})\nCircle: {circle}, seed {seed}\n"
+                     "Days run: {days}\nToday's lesson: {lesson}\nMembers:\n{members}",
+        Language.YO: "🧪 Ipò àfihàn\nÀkókò àfihàn: {time} (aago {offset})\nẸgbẹ́: {circle}, irúgbìn {seed}\n"
+                     "Ọjọ́ tí a ti ṣe: {days}\nẸ̀kọ́ òní: {lesson}\nỌmọ ẹgbẹ́:\n{members}",
+        Language.PCM: "🧪 Demo status\nVirtual time: {time} (clock {offset})\nCircle: {circle}, seed {seed}\n"
+                      "Days wey don run: {days}\nToday lesson: {lesson}\nMembers:\n{members}",
+    },
+    "admin.status_member": {
+        Language.EN: "• {name}{persona}: last check-in {last}, streak {streak}",
+        Language.YO: "• {name}{persona}: ìgbà tó wọlé kẹ́yìn {last}, ọjọ́ léraléra {streak}",
+        Language.PCM: "• {name}{persona}: last check-in {last}, streak {streak}",
+    },
+    "admin.persona_marker": {Language.EN: " (persona)", Language.YO: " (ẹ̀dá àfihàn)", Language.PCM: " (persona)"},
+    "admin.reset_confirm": {
+        Language.EN: "Reset the demo? This deletes the circle's lessons, answers, feed, nudges and personas and sets "
+                     "the clock back to real time. Learners, their questions and the library are kept.",
+        Language.YO: "Ṣé kí a tún àfihàn bẹ̀rẹ̀? Èyí máa pa ẹ̀kọ́, ìdáhùn, ìròyìn, ìránlétí àti àwọn ẹ̀dá àfihàn "
+                     "ẹgbẹ́ náà rẹ́, yóò sì dá aago padà sí àkókò gidi. A máa pa àwọn akẹ́kọ̀ọ́, ìbéèrè wọn àti "
+                     "ilé-ìkàwé mọ́.",
+        Language.PCM: "You wan reset the demo? E go delete the circle lessons, answers, feed, nudges and personas, "
+                      "and carry the clock back to real time. Learners, their questions and the library go stay.",
+    },
+    "admin.reset_yes": {Language.EN: "Yes, reset", Language.YO: "Bẹ́ẹ̀ni, tún un bẹ̀rẹ̀", Language.PCM: "Yes, reset am"},
+    "admin.reset_done": {
+        Language.EN: "♻️ Demo reset. The clock is back to real time. Send /seed_demo to add the personas again.",
+        Language.YO: "♻️ A ti tún àfihàn bẹ̀rẹ̀. Aago ti padà sí àkókò gidi. Fi /seed_demo ránṣẹ́ láti fi àwọn "
+                     "ẹ̀dá àfihàn kún un padà.",
+        Language.PCM: "♻️ Demo don reset. Clock don go back to real time. Send /seed_demo to add the personas again.",
+    },
+    "admin.reset_cancelled": {
+        Language.EN: "Reset cancelled. Nothing was changed.",
+        Language.YO: "A ti fagilé àtúnbẹ̀rẹ̀. Kò sí ohun tó yí padà.",
+        Language.PCM: "Reset don cancel. Nothing change.",
+    },
 }
 
 

@@ -590,14 +590,14 @@ class LessonService:
         return lesson_replies(session, lesson, learner)
 
     def post(self, session: Session, circle: Circle, now: datetime) -> tuple[Lesson, list[tuple[Learner, list[Reply]]]]:
-        """Today's lesson for a whole circle, translated into every member's language, with each real
-        member's messages. Delivery through the adapter registry is up to the caller."""
+        """Today's lesson for a whole circle, translated into every real member's language, with each real
+        member's messages. Simulated personas read nothing, so their languages cost no translation.
+        Delivery is up to the caller."""
         members = session.scalars(select(Learner).join(CircleMember, CircleMember.learner_id == Learner.id)
-                                  .where(CircleMember.circle_id == circle.id)
+                                  .where(CircleMember.circle_id == circle.id, Learner.is_simulated.is_(False))
                                   .order_by(CircleMember.joined_at, Learner.id)).all()
         lesson = self.todays_lesson(session, circle, now, {member.language for member in members})
-        return lesson, [(member, lesson_replies(session, lesson, member)) for member in members
-                        if not member.is_simulated]
+        return lesson, [(member, lesson_replies(session, lesson, member)) for member in members]
 
     # Pre-generation
 

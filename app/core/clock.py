@@ -43,3 +43,10 @@ class Clock:
             if result.rowcount != 1:
                 raise RuntimeError("Clock state is missing; run alembic upgrade head")
             return self.now(session)
+
+    def reset(self, session: Session) -> datetime:
+        """Return to real time (offset 0) inside the caller's transaction; used by /reset_demo."""
+        result = session.execute(update(ClockState).where(ClockState.id == 1).values(offset_seconds=0))
+        if result.rowcount != 1:
+            raise RuntimeError("Clock state is missing; run alembic upgrade head")
+        return self.now(session)

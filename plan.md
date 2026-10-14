@@ -99,14 +99,48 @@ Depends on milestones 1–3.
 
 Depends on milestones 3–4.
 
-- [ ] Seed the goal, circle, admin learner, and Chidi, Halima, and Tunde with repeatable random seeds.
-- [ ] Implement their specified check-in and answer behavior; simulated members have no chat IDs and receive no external messages.
-- [ ] Restrict `/seed_demo`, `/simulate_day`, `/simulate_week`, `/reset_demo`, and `/demo_status` to `ADMIN_IDS`.
-- [ ] Advance the clock by 24 hours per simulated day and run persona actions, lessons, inactivity checks, and feed delivery in a defined sequence.
-- [ ] Connect APScheduler to virtual-time-aware job decisions and prevent duplicate daily processing.
-- [ ] Batch ordinary circle updates to at most one message per learner per day. Reset circle state and clock without deleting the corpus.
+- [x] Seed the goal, circle, admin learner, and Chidi, Halima, and Tunde with repeatable random seeds.
+- [x] Implement their specified check-in and answer behavior; simulated members have no chat IDs and receive no external messages.
+- [x] Restrict `/seed_demo`, `/simulate_day`, `/simulate_week`, `/reset_demo`, and `/demo_status` to `ADMIN_IDS`.
+- [x] Advance the clock by 24 hours per simulated day and run persona actions, lessons, inactivity checks, and feed delivery in a defined sequence. *(The inactivity step is a placeholder until milestone 6.)*
+- [x] Connect APScheduler to virtual-time-aware job decisions and prevent duplicate daily processing.
+- [x] Batch ordinary circle updates to at most one message per learner per day. Reset circle state and clock without deleting the corpus.
 
 **Completion check:** Repeating a seeded simulation produces the same behavior; timestamps use the virtual clock; unauthorized admin commands fail; feeds obey privacy and batching rules.
+
+**Validation:** `tests/test_simulation.py`, `tests/test_feed.py` and `tests/test_scheduler.py` run on SQLite and PostgreSQL, with every lesson served from a pre-generated fallback and the LLM disabled. They cover the following:
+- Seeding is idempotent, and personas have no chat IDs.
+- Every admin command and button is refused for non-admins, for users who haven't onboarded, and for the admin's numeric ID arriving on another channel.
+- `/simulate_day` adds exactly 86,400 seconds, and persona answers carry the virtual date.
+- Personas never get outbox rows. Tunde answers on days 1 and 2 only, then on the day after a nudge.
+- Chidi's accuracy is close to 0.9 and Halima's to 0.5 over 2,000 draws.
+- A seed-42 run repeats exactly after `/reset_demo`, and a different seed differs.
+- `/simulate_week` produces seven lessons, seven `daily_runs` rows and seven circle updates with distinct keys.
+- Scheduled and simulated runs never process a day twice.
+- Chidi replies only to on-topic circle questions.
+- Scores appear only for learners who opted in. Updates are batched one per day, with later events carried into the next update, and deleted members appear anonymously.
+- Outbox delivery is ordered, retries on failure and then gives up, and logs no chat IDs.
+- The real APScheduler service starts, delivers and stops cleanly.
+
+Against a copy of the ingested database with `LLM_ENABLED=false`, a synthetic admin onboarded, ran `/seed_demo 42` and simulated four days. Each day queued one cited lesson and one circle update; nothing reached the personas, and no live LLM calls were made. On day 4 the update read "Tunde ⏳ no check-in since Thursday". `/demo_status` and `/reset_demo` behaved as specified.
+
+Implementation notes:
+- **Daily run.** `DemoEngine.run_day` (`app/sim/engine.py`) is the single daily job for both the scheduler and `/simulate_day`. Its order is: prepare today's lesson (every LLM call happens before the transaction writes), claim the circle and virtual day in `daily_runs` with ON CONFLICT, queue the lesson, run the personas, run the inactivity check (milestone 6), then queue the circle updates. The spec lists persona actions before the lesson post; the lesson comes first here because personas answer it, and nothing is delivered before commit.
+- **Outbox.** Messages a learner didn't ask for go into `outbound_deliveries`, in the same transaction as the work that produced them. A two-second APScheduler job sends them through the adapter registry. Delivery is retried up to five times, and a failure part-way through a batch resends the whole batch. Rows for a channel with no adapter wait without blocking others. A failed batch holds back that learner's later batches until the next pass, so messages never arrive out of order. The Telegram adapter is unregistered when polling stops. Each row and its learner are re-read just before every message, including between messages in one batch, so a deletion committed during delivery cancels whatever has not yet been handed to the adapter.
+- **Feed.** The feed key `feed:<circle>:<learner>:<virtual day>` is unique, so the one-update-per-day limit is enforced by the database. Each update lists the other members' check-in status ("answered today's questions", "checked in today", "checked in yesterday", "no check-in since <weekday>" after two or more quiet days, "no check-in for over a week"). It then lists new circle questions, persona replies and anonymous departures since that member's previous update (`circle_members.feed_delivered_at`). Scores come from `answers`, and only for members with `share_scores`. A score line is queued in its private form, with a substitution record only for members who had opted in when the update was queued. The substitution is applied at send time only if the owner still shares scores, so an opt-out also covers updates already queued. An update stays under 3,500 characters (question previews are capped at 280). Events that don't fit stay after the member's `(feed_delivered_at, feed_cursor_id)` cursor for the next day's update, and a "…and N more" line says so. The ID part of the cursor keeps events that share a timestamp from being skipped. The "checked in yesterday" line exists because real learners answer after the morning update.
+- **Scheduler.** With `SCHEDULER_ENABLED` (default off), a 60-second tick runs every circle that has a real member once today's virtual `LESSON_TIME` (default 07:00 UTC) falls between two ticks. It does not catch up after downtime or after `/reset_demo` moves the clock back, and it retries on the next tick if a circle fails.
+- **Personas.** Each persona decision uses `random.Random("seed|persona|...|day|question")`, so results don't depend on the order of actions. "Day" counts the circle's processed days, so a learner's own `/lesson` can't shift Tunde's schedule. Chidi's reply decision is keyed by the question's normalized text, so a rehearsed question gets the same outcome. Personas answer through `grading.record_answer`, including the easier follow-up after a wrong answer. Tunde's accuracy is not specified; it is 0.7.
+- **Chidi's replies.** Chidi replies to half of circle questions, chosen by seed. Each reply is a fixed i18n string plus the library's best-matching citation, and is posted only if retrieval clears `RETRIEVAL_MIN_SCORE`, so it needs no LLM call.
+- **Lesson translation.** `LessonService.post` now translates only into real members' languages, since personas read nothing.
+- **Admin learner.** An admin becomes a learner only by onboarding, so consent is recorded. `/seed_demo` uses the admin's goal, or `DEMO_GOAL` if they haven't onboarded, and in that case asks them to `/start`. It refuses when no goal is ingested.
+- **Reset.** `/reset_demo` asks for confirmation. It then deletes the circle's lessons (with questions and answers), feed events, nudges, daily runs, simulation row, personas and members' outbox rows, clears check-in state and sets the clock offset to 0. Learners, their QA history, the corpus, pre-generated lessons and the LLM cache are kept.
+- **Payouts.** `/simulate_week` reports that payouts are not available yet (milestone 7).
+
+Known limitations:
+- `/simulate_week` runs synchronously and can take a while with a cold LLM cache; Telegram handles one update at a time.
+- The virtual clock is global, so `/reset_demo` moves it back for every circle, but only the demo circle's state is wiped. The POC has one circle per goal and one goal.
+- On PostgreSQL, a circle question whose transaction commits after that day's update has been built, but carries an earlier timestamp, is missed by the feed cursor. That window is milliseconds wide.
+- On SQLite, which has no row locks, a scheduler tick racing `/simulate_day` is resolved by the lesson's unique key and reported as "already ran".
 
 ## Milestone 6: Inactivity and Peer Nudges
 
@@ -178,6 +212,6 @@ Depends on milestones 3–4 and demo seeding; optional.
 
 - Select the local language for the minimum demo; the full demo script favors Yoruba while personas also use Pidgin.
 - Select the free LLM provider and supported model, verify current API compatibility and quotas, and retain configuration-based switching. Milestone 2 uses OpenAI GPT (`gpt-5.4-mini`); the client remains provider-agnostic. Unlike the free tiers in spec section 3.1, this is a paid API.
-- Define virtual-day scheduling and weekly-boundary behavior before implementing the scheduler so real and simulated runs agree.
+- Define weekly-boundary behavior for payouts so scheduled and simulated runs agree. (Virtual-day scheduling is settled in milestone 5: one claimed `daily_runs` row per circle and virtual day, triggered at `LESSON_TIME` or by `/simulate_day`.)
 - Define expired-opportunity handling without inventing unverified content. (After the ten-topic sequence, lessons restart at topic 1 as revision; see milestone 4.)
 - Keep WhatsApp, production auth, real matching, additional exams, mentor roles, and offline Android work outside this implementation.

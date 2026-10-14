@@ -1,3 +1,4 @@
+from datetime import time
 from typing import Literal
 from urllib.parse import urlparse
 
@@ -30,6 +31,11 @@ class Settings(BaseSettings):
     embed_model: str = "intfloat/multilingual-e5-small"
     retrieval_min_score: float = 0.80
     llm_cache: bool = True
+    # The scheduler runs each circle's daily jobs when the virtual clock passes LESSON_TIME (UTC).
+    # Off by default so tests and scripted demos are driven by /simulate_day alone.
+    scheduler_enabled: bool = False
+    lesson_time: time = time(7, 0)  # 08:00 in Lagos
+    demo_goal: str = "jamb_bio"  # the goal /seed_demo uses when the admin has not onboarded
 
     @field_validator("hash_salt")
     @classmethod

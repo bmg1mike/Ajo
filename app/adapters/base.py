@@ -27,6 +27,13 @@ class AdapterRegistry:
             raise ValueError(f"Adapter already registered for {adapter.channel}")
         self._adapters[adapter.channel] = adapter
 
+    def unregister(self, channel: Channel) -> None:
+        self._adapters.pop(channel, None)
+
+    @property
+    def channels(self) -> frozenset[Channel]:
+        return frozenset(self._adapters)
+
     def get(self, channel: Channel) -> Adapter:
         try:
             return self._adapters[channel]

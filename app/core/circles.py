@@ -20,7 +20,7 @@ def demo_circle(session: Session, goal: Goal, now: datetime) -> Circle:
     """The goal's demo circle, created on first use.
 
     Its ID is derived from the goal code and inserted with ON CONFLICT DO NOTHING, so concurrent
-    first joins converge on one row instead of creating two circles. Milestone 5 seeds the
+    first joins converge on one row instead of creating two circles. /seed_demo seeds the
     personas into the same circle.
     """
     circle_id = demo_circle_id(goal)
@@ -41,6 +41,10 @@ def join(session: Session, circle: Circle, learner: Learner, now: datetime) -> C
         session.add(member)
         session.flush()
     return member
+
+
+def is_member(session: Session, circle_id: UUID, learner_id: UUID) -> bool:
+    return session.get(CircleMember, (circle_id, learner_id)) is not None
 
 
 def member_first_names(session: Session, circle_id: UUID) -> list[str]:

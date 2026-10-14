@@ -35,6 +35,12 @@ class FeedType(StrEnum):
     PAYOUT = "payout"
     QUESTION = "question"  # a learner chose to post an unanswered question to the circle
     MEMBER_LEFT = "member_left"  # anonymous: "A member left the circle." after /delete_me
+    REPLY = "reply"  # a simulated member's canned reply, with a citation, to a circle question
+
+
+class RunTrigger(StrEnum):
+    SCHEDULER = "scheduler"
+    SIMULATION = "simulation"
 
 
 class OnboardingStep(StrEnum):
@@ -140,6 +146,31 @@ class CircleMember(Base):
     joined_at: Mapped[datetime] = mapped_column(TIMESTAMP)
     last_checkin_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     streak_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Feed cursor: the last circle event relayed to this member, as (created_at, id) so events sharing a
+    # timestamp are never skipped; with no ID, every event up to feed_delivered_at was relayed.
+    feed_delivered_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    feed_cursor_id: Mapped[UUID | None] = mapped_column(Uuid())
+
+
+class Simulation(Base):
+    """A seeded demo circle: the seed makes persona behavior repeatable (spec section 9.2)."""
+    __tablename__ = "simulations"
+    circle_id: Mapped[UUID] = mapped_column(ForeignKey("circles.id", ondelete="CASCADE"), primary_key=True)
+    seed: Mapped[int] = mapped_column(BigInteger)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
+
+
+class DailyRun(Base):
+    """One row per circle and virtual day whose daily jobs ran, by the scheduler or /simulate_day.
+
+    The primary key is the duplicate guard: a run claims its day with ON CONFLICT DO NOTHING.
+    """
+    __tablename__ = "daily_runs"
+    circle_id: Mapped[UUID] = mapped_column(ForeignKey("circles.id", ondelete="CASCADE"), primary_key=True)
+    virtual_day: Mapped[date] = mapped_column(Date, primary_key=True)
+    trigger: Mapped[RunTrigger] = mapped_column(enum_type(RunTrigger, "run_trigger"))
+    lesson_id: Mapped[UUID | None] = mapped_column(ForeignKey("lessons.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
 
 
 class Source(Identified, Base):
@@ -290,3 +321,6 @@ class OutboundDelivery(Identified, Base):
     deduplication_key: Mapped[str | None] = mapped_column(Text, unique=True)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
     delivered_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    # Set when delivery gave up after repeated failures; such rows are not retried.
+    failed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)

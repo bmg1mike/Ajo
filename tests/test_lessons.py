@@ -612,8 +612,8 @@ def test_deleting_a_learner_removes_their_answers_and_feed_events(sessions, libr
         assert session.get(Lesson, latest_lesson(sessions, library).id) is not None  # circle content stays
 
 
-def test_post_translates_for_every_member_and_skips_simulated_ones(sessions, clock, library, make_client,
-                                                                    make_conversation):
+def test_post_translates_for_real_members_only_and_skips_simulated_ones(sessions, clock, library, make_client,
+                                                                         make_conversation):
     conversation = make_conversation()
     real = onboarded(conversation, library)
     with sessions.begin() as session:
@@ -623,11 +623,11 @@ def test_post_translates_for_every_member_and_skips_simulated_ones(sessions, clo
         session.add(persona)
         session.flush()
         session.add(CircleMember(circle_id=circle.id, learner_id=persona.id, joined_at=clock.now(session)))
-    fake = FakeLLM(*generated(), chat(translation_reply("PCM")), chat(FAITHFUL))
+    fake = FakeLLM(*generated())  # no translation: the Pidgin persona reads nothing
     service = LessonService(EMBEDDER, make_client(fake), clock)
     with sessions.begin() as session:
         lesson, deliveries = service.post(session, session.get(Circle, circle.id), clock.now(session))
-        assert set(lesson.body) == {"en", "pcm"}
+        assert set(lesson.body) == {"en"} and not fake.responses
         assert [learner.id for learner, _ in deliveries] == [learner_of(sessions, real).id]
         assert deliveries[0][1][0].text.startswith("📘 Day 1")
 
