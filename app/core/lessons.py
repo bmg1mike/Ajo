@@ -58,6 +58,7 @@ MAX_REVIEW_NOTE_CHARS = 200
 PREFIX = "ls:"
 START_QUESTIONS = "ls:go:"
 ANSWER = "ls:a:"
+TODAY = "ls:today"  # today's lesson on request, as /lesson does; offered with a peer nudge
 
 _NAMESPACE = UUID("8d7c5e0b-31a4-4f6e-9b0d-2a6c1e4f7a93")
 

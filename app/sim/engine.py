@@ -10,8 +10,9 @@ the virtual lesson time or an admin sent /simulate_day. Its steps, in order:
    scheduler and /simulate_day never process the same circle and virtual day twice.
 3. Queue the lesson for every real member.
 4. Persona actions in a seeded circle: check-ins and answers, then Chidi's replies to questions.
-5. Inactivity check and nudge prompts: milestone 6.
-6. Queue each real member's batched circle update.
+5. Inactivity check: members first detected as quiet today (`app/core/nudges.py`).
+6. Queue each real member's batched circle update, carrying a nudge prompt for each newly quiet
+   member to everyone else in the circle.
 
 The spec lists persona actions before the lesson post. Here the lesson comes first because the
 personas answer it; nothing is delivered before the transaction commits, so learners still get
@@ -32,7 +33,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.base import Button
-from app.core import circles, feed, outbox
+from app.core import circles, feed, nudges, outbox
 from app.core.clock import Clock, virtual_day
 from app.core.conversation import ADMIN_PREFIX
 from app.core.embeddings import Embedder
@@ -67,6 +68,7 @@ class DayReport:
     topic: str | None
     checked_in: list[str]  # first names of members who checked in today, in joining order
     replies: int  # persona replies to circle questions
+    quiet: list[str]  # first names of members first detected as quiet today
     lessons_queued: int
     updates_queued: int
 
@@ -120,14 +122,15 @@ class DemoEngine:
                              for learner, replies in posts)
         # 4. Persona actions.
         replies = self._personas_act(session, circle, lesson, today, now)
-        # 5. Inactivity check and nudge prompts: milestone 6.
-        # 6. The batched circle update.
-        updates_queued = feed.queue_digests(session, self.clock, circle, now)
+        # 5. Inactivity check, after the personas have had today's chance to check in.
+        quiet = nudges.detect(session, circle.id, now)
+        # 6. The batched circle update, with nudge prompts for the newly quiet.
+        updates_queued = feed.queue_digests(session, self.clock, circle, now, quiet)
         statuses = feed.member_statuses(session, circle.id, lesson)
         topic = session.get(SyllabusTopic, lesson.topic_id).title if lesson else None
         return DayReport(circle.id, today, lesson.day_index if lesson else None, topic,
                          [status.first_name for status in statuses if status.last_checkin == today],
-                         replies, lessons_queued, updates_queued)
+                         replies, [member.first_name for member in quiet], lessons_queued, updates_queued)
 
     def _personas_act(self, session: Session, circle: Circle, lesson: Lesson | None, today: date, now) -> int:
         simulation = session.get(Simulation, circle.id)
@@ -258,9 +261,10 @@ class DemoEngine:
             return t("admin.already_ran", language, date=shown)
         lesson = (t("admin.day_lesson", language, day=report.lesson_day, topic=report.topic)
                   if report.lesson_day is not None else t("admin.no_lesson", language))
-        return t("admin.day_done", language, date=shown, lesson=lesson,
+        text = t("admin.day_done", language, date=shown, lesson=lesson,
                  names=", ".join(report.checked_in) or t("admin.nobody", language),
                  lessons=report.lessons_queued, updates=report.updates_queued)
+        return f"{text}\n{t('admin.day_quiet', language, names=', '.join(report.quiet))}" if report.quiet else text
 
     def _status(self, user_hash: str) -> list[Reply]:
         with self.sessions() as session:

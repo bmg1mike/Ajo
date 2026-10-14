@@ -2,7 +2,8 @@
 
 Commands: /start, /lesson, /ask, /language, /share_scores, /delete_me and /help. Any other text from
 an onboarded learner is a question for QA (spec section 7.4). Raw channel user IDs are hashed
-on arrival and never stored.
+on arrival and never stored. Button payloads are namespaced: `ob:` onboarding, `acct:` account,
+`qa:` QA, `ls:` lessons and `nd:` peer nudges.
 
 The demo admin commands (spec section 9.3) work only for Telegram user IDs listed in ADMIN_IDS,
 checked against the raw ID before it is hashed. Everyone else is refused, onboarded or not.
@@ -16,7 +17,7 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.core import account, grading, lessons, onboarding, qa
+from app.core import account, grading, lessons, nudges, onboarding, qa
 from app.core.clock import Clock
 from app.core.i18n import t
 from app.core.privacy import channel_hash
@@ -168,7 +169,9 @@ class Conversation:
             return self._lesson_button(session, learner, payload, now)
         if payload == qa.DISMISS:
             return [qa.dismiss(learner)]
-        for prefix in (qa.SHOW_SOURCE, qa.ASK_CIRCLE):
+        if payload == nudges.LATER:
+            return [nudges.later(learner)]
+        for prefix in (qa.SHOW_SOURCE, qa.ASK_CIRCLE, nudges.SEND):
             if payload.startswith(prefix):
                 try:
                     target = UUID(payload.removeprefix(prefix))
@@ -176,10 +179,14 @@ class Conversation:
                     break
                 if prefix == qa.SHOW_SOURCE:
                     return [qa.show_source(session, learner, target)]
+                if prefix == nudges.SEND:
+                    return [nudges.send(session, learner, target, now)]
                 return [qa.ask_circle(session, learner, target, now)]
         return [Reply(t("button.expired", learner.language))]
 
     def _lesson_button(self, session: Session, learner: Learner, payload: str, now: datetime) -> list[Reply]:
+        if payload == lessons.TODAY:
+            return self.lessons.today(session, learner, now)
         try:
             if payload.startswith(lessons.START_QUESTIONS):
                 return grading.start(session, self.lessons, learner, UUID(payload.removeprefix(lessons.START_QUESTIONS)))

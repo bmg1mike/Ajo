@@ -13,6 +13,11 @@ back that learner's later batches until the next pass so they never arrive out o
 
 Rows are re-read just before each message is sent, so a learner deleted meanwhile receives nothing
 more, and score lines are rendered from the owner's current /share_scores choice at that moment.
+
+A row may carry an `expires_at` virtual time. From then on it is never sent, whether it was
+waiting for an adapter, retrying after failures or simply not reached yet; it stays unsent and
+does not hold back the learner's other batches. Nudges expire at the end of the virtual day they
+were sent, so a late one is dropped rather than delivered beside the next day's.
 """
 import asyncio
 import logging
@@ -20,7 +25,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.adapters.base import AdapterRegistry, Button
@@ -50,10 +55,11 @@ class ScoreLine:
 
 
 def enqueue(session: Session, learner: Learner, replies: list[Reply], *, key: str, now: datetime,
-            scores: list[ScoreLine] = ()) -> bool:
+            scores: list[ScoreLine] = (), expires_at: datetime | None = None) -> bool:
     """Queue `replies` for one real learner; False if the learner can't receive them or `key` was used.
 
-    `now` orders deliveries, so callers pass a fresh clock reading for each batch.
+    `now` orders deliveries, so callers pass a fresh clock reading for each batch. A batch with
+    `expires_at` is never sent once the virtual clock reaches it.
     """
     if learner.is_simulated or not learner.channel_chat_id or not replies:
         return False
@@ -66,7 +72,7 @@ def enqueue(session: Session, learner: Learner, replies: list[Reply], *, key: st
     inserted = session.scalar(
         dialect_insert(session, OutboundDelivery).values(
             id=uuid4(), learner_id=learner.id, channel=learner.channel.value, channel_chat_id=learner.channel_chat_id,
-            payload=payload, deduplication_key=key, created_at=now, attempts=0,
+            payload=payload, deduplication_key=key, created_at=now, attempts=0, expires_at=expires_at,
         ).on_conflict_do_nothing(index_elements=["deduplication_key"]).returning(OutboundDelivery.id)
     )
     return inserted is not None
@@ -96,34 +102,40 @@ class _Pending:
     messages: int
 
 
-def pending(session: Session, channels: frozenset, limit: int = BATCH_SIZE) -> list[OutboundDelivery]:
-    """Unsent rows for channels that have an adapter, oldest first."""
+def _sendable(now: datetime):
+    return (OutboundDelivery.delivered_at.is_(None), OutboundDelivery.failed_at.is_(None),
+            or_(OutboundDelivery.expires_at.is_(None), OutboundDelivery.expires_at > now))
+
+
+def pending(session: Session, channels: frozenset, now: datetime, limit: int = BATCH_SIZE) -> list[OutboundDelivery]:
+    """Unsent, unexpired rows for channels that have an adapter, oldest first."""
     if not channels:
         return []
     return list(session.scalars(
         select(OutboundDelivery)
-        .where(OutboundDelivery.delivered_at.is_(None), OutboundDelivery.failed_at.is_(None),
-               OutboundDelivery.channel.in_([channel.value for channel in channels]))
+        .where(*_sendable(now), OutboundDelivery.channel.in_([channel.value for channel in channels]))
         .order_by(OutboundDelivery.created_at, OutboundDelivery.id).limit(limit)
     ))
 
 
-def _load(sessions: sessionmaker[Session], channels: frozenset, limit: int) -> list[_Pending]:
+def _load(sessions: sessionmaker[Session], clock: Clock, channels: frozenset, limit: int) -> list[_Pending]:
     with sessions() as session:
         return [_Pending(row.id, row.learner_id, len(row.payload["messages"]))
-                for row in pending(session, channels, limit)]
+                for row in pending(session, channels, clock.now(session), limit)]
 
 
-def _prepare(sessions: sessionmaker[Session], delivery_id: UUID, index: int) -> tuple[Learner, Reply] | None:
-    """Re-read the row and its learner just before sending one message; None if either is gone or settled.
+def _prepare(sessions: sessionmaker[Session], clock: Clock, delivery_id: UUID,
+             index: int) -> tuple[Learner, Reply] | None:
+    """Re-read the row and its learner just before sending one message; None if either is gone, the row
+    is settled, or it has expired.
 
     Deleting a learner cascades to their rows, so a deletion committed while earlier messages were
     being sent cancels everything not yet handed to the adapter.
     """
     with sessions() as session:
         row = session.execute(select(OutboundDelivery, Learner).join(Learner, Learner.id == OutboundDelivery.learner_id)
-                              .where(OutboundDelivery.id == delivery_id, OutboundDelivery.delivered_at.is_(None),
-                                     OutboundDelivery.failed_at.is_(None))).first()
+                              .where(OutboundDelivery.id == delivery_id,
+                                     *_sendable(clock.now(session)))).first()
         if row is None:
             return None
         delivery, learner = row
@@ -154,14 +166,14 @@ async def deliver_pending(sessions: sessionmaker[Session], registry: AdapterRegi
     wait without blocking the others. Database work runs in threads, off the event loop.
     """
     sent, held = 0, set()
-    for item in await asyncio.to_thread(_load, sessions, registry.channels, limit):
+    for item in await asyncio.to_thread(_load, sessions, clock, registry.channels, limit):
         if item.learner_id in held:
             continue  # an earlier batch for this learner failed or was cancelled: keep their messages in order
         try:
             for index in range(item.messages):
-                prepared = await asyncio.to_thread(_prepare, sessions, item.id, index)
+                prepared = await asyncio.to_thread(_prepare, sessions, clock, item.id, index)
                 if prepared is None:
-                    break  # the learner was deleted, or the row settled elsewhere
+                    break  # the learner was deleted, the row settled elsewhere, or it expired
                 learner, reply = prepared
                 await registry.send_text(learner, reply.text, reply.buttons)
             else:

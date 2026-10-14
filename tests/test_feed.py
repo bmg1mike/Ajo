@@ -235,6 +235,28 @@ class FlakyAdapter(FakeAdapter):
         await super().send_text(learner, text, buttons)
 
 
+def test_an_expired_batch_is_never_sent_even_after_failures(sessions, clock, real_learner):
+    with sessions.begin() as session:
+        now = clock.now(session)
+        outbox.enqueue(session, real_learner, [Reply("nudge")], key=f"nudge:{uuid4()}", now=now,
+                       expires_at=now + timedelta(hours=1))
+        outbox.enqueue(session, real_learner, [Reply("update")], key=f"feed:{uuid4()}",
+                       now=now + timedelta(seconds=1))
+    clear_other_deliveries(sessions, clock, real_learner)
+    registry, failing = AdapterRegistry(), FakeAdapter(fail=RuntimeError("down"))
+    registry.register(failing)
+    assert asyncio.run(outbox.deliver_pending(sessions, registry, clock)) == 0
+    clock.advance(timedelta(hours=1))
+    registry.unregister(Channel.TELEGRAM)
+    registry.register(adapter := FakeAdapter())
+    assert asyncio.run(outbox.deliver_pending(sessions, registry, clock)) == 1
+    assert [text for _, text, _ in adapter.sent] == ["update"]  # the expired nudge is skipped, not blocking
+    with sessions() as session:
+        expired = session.scalar(select(OutboundDelivery).where(OutboundDelivery.learner_id == real_learner.id,
+                                                                OutboundDelivery.deduplication_key.like("nudge:%")))
+        assert (expired.delivered_at, expired.failed_at, expired.attempts) == (None, None, 1)
+
+
 def test_a_failed_batch_holds_back_that_learners_later_batches(sessions, clock, real_learner):
     with sessions.begin() as session:
         for text in ("lesson 1", "update 1", "lesson 2"):

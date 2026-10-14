@@ -394,6 +394,44 @@ STRINGS: dict[str, dict[Language, str]] = {
         Language.YO: "💬 {name} dáhùn ìbéèrè ẹgbẹ́ kan: Mo rò pé apá ìwé yìí ló ṣàlàyé rẹ̀.",
         Language.PCM: "💬 {name} reply one circle question: I think say this part of the book explain am.",
     },
+    # Inactivity and peer nudges (spec section 7.6): the nudge always comes from a person.
+    "nudge.prompt": {
+        Language.EN: "💤 {name} has gone quiet. A nudge from you could help.",
+        Language.YO: "💤 {name} ti dákẹ́ fún ọjọ́ díẹ̀. Ìránlétí láti ọ̀dọ̀ rẹ lè ṣèrànwọ́.",
+        Language.PCM: "💤 {name} don quiet small. Nudge from you fit help.",
+    },
+    "nudge.button": {Language.EN: "👋 Send {name} a nudge", Language.YO: "👋 Rán {name} létí",
+                     Language.PCM: "👋 Nudge {name}"},
+    "nudge.message": {
+        Language.EN: "👋 {name} from your circle is checking on you.\nToday's lesson is short. Want it now?",
+        Language.YO: "👋 {name} láti inú ẹgbẹ́ rẹ ń béèrè nípa rẹ.\nẸ̀kọ́ òní kò gùn. Ṣé o fẹ́ ẹ báyìí?",
+        Language.PCM: "👋 {name} from your circle dey check on you.\nToday lesson short. You want am now?",
+    },
+    "nudge.yes": {Language.EN: "Yes, send it", Language.YO: "Bẹ́ẹ̀ni, fi ránṣẹ́", Language.PCM: "Yes, send am"},
+    "nudge.later": {Language.EN: "Later", Language.YO: "Nígbà míì", Language.PCM: "Later"},
+    "nudge.later_reply": {
+        Language.EN: "No problem. Send /lesson whenever you're ready.",
+        Language.YO: "Kò burú. Fi /lesson ránṣẹ́ nígbàkígbà tí o bá ṣetán.",
+        Language.PCM: "No wahala. Send /lesson anytime wey you ready.",
+    },
+    "nudge.sent": {
+        Language.EN: "👋 Your nudge is on its way to {name}.",
+        Language.YO: "👋 Ìránlétí rẹ ti ń lọ sọ́dọ̀ {name}.",
+        Language.PCM: "👋 Your nudge don dey go meet {name}.",
+    },
+    "nudge.already_sent": {
+        Language.EN: "{name} has already been nudged today, so yours wasn't sent. Thanks for looking out for your "
+                     "circle.",
+        Language.YO: "Ẹnìkan ti rán {name} létí lónìí, nítorí náà a kò fi tìrẹ ránṣẹ́. O ṣé fún bí o ṣe ń "
+                     "bójú tó ẹgbẹ́ rẹ.",
+        Language.PCM: "Person don already nudge {name} today, so we no send your own. Thank you as you dey look out "
+                      "for your circle.",
+    },
+    "nudge.not_quiet": {
+        Language.EN: "{name} has checked in recently, so no nudge is needed.",
+        Language.YO: "{name} ti wọlé láìpẹ́, nítorí náà kò sí ìdí fún ìránlétí.",
+        Language.PCM: "{name} don check in recently, so no need for nudge.",
+    },
     "weekday.0": {Language.EN: "Monday", Language.YO: "Ọjọ́ Ajé", Language.PCM: "Monday"},
     "weekday.1": {Language.EN: "Tuesday", Language.YO: "Ọjọ́ Ìṣẹ́gun", Language.PCM: "Tuesday"},
     "weekday.2": {Language.EN: "Wednesday", Language.YO: "Ọjọ́rú", Language.PCM: "Wednesday"},
@@ -441,6 +479,11 @@ STRINGS: dict[str, dict[Language, str]] = {
         Language.YO: "⏩ {date}: {lesson}\nÀwọn tó wọlé: {names}\nNí ìlà: {lessons} ẹ̀kọ́, {updates} ìròyìn ẹgbẹ́",
         Language.PCM: "⏩ {date}: {lesson}\nWho check in: {names}\nFor queue: {lessons} lesson post(s), "
                       "{updates} circle update(s)",
+    },
+    "admin.day_quiet": {
+        Language.EN: "Gone quiet: {names} (the circle was invited to nudge)",
+        Language.YO: "Àwọn tó dákẹ́: {names} (a ti pe ẹgbẹ́ láti rán wọn létí)",
+        Language.PCM: "Who don quiet: {names} (we don invite the circle to nudge)",
     },
     "admin.day_lesson": {
         Language.EN: "Day {day}, {topic}",

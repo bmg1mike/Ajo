@@ -1,4 +1,6 @@
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from uuid import uuid4
 
@@ -15,10 +17,11 @@ from app.llm.client import LLMClient
 from tests.fakes import FakeLLM
 
 
-@pytest.fixture(scope="session", params=["sqlite", "postgres"])
-def database_url(request, tmp_path_factory):
-    if request.param == "sqlite":
-        yield f"sqlite:///{tmp_path_factory.mktemp('db') / 'foundation.db'}"
+@contextmanager
+def throwaway_database(dialect: str, directory: Path) -> Iterator[str]:
+    """The URL of a new, empty database, removed afterwards; PostgreSQL needs TEST_DATABASE_URL."""
+    if dialect == "sqlite":
+        yield f"sqlite:///{directory / 'foundation.db'}"
         return
     configured = os.getenv("TEST_DATABASE_URL")
     if not configured:
@@ -37,14 +40,24 @@ def database_url(request, tmp_path_factory):
         admin.dispose()
 
 
-@pytest.fixture(scope="session")
-def engine(database_url):
-    engine = build_engine(database_url)
+def migrate(engine, revision: str = "head") -> None:
     config = Config(str(Path(__file__).parents[1] / "alembic.ini"))
     with engine.connect() as connection:
         config.attributes["connection"] = connection
-        command.upgrade(config, "head")
-        command.upgrade(config, "head")  # Idempotent repeated deployment.
+        command.upgrade(config, revision)
+
+
+@pytest.fixture(scope="session", params=["sqlite", "postgres"])
+def database_url(request, tmp_path_factory):
+    with throwaway_database(request.param, tmp_path_factory.mktemp("db")) as url:
+        yield url
+
+
+@pytest.fixture(scope="session")
+def engine(database_url):
+    engine = build_engine(database_url)
+    migrate(engine)
+    migrate(engine)  # Idempotent repeated deployment.
     yield engine
     engine.dispose()
 

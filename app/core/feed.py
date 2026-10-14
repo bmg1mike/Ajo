@@ -8,10 +8,13 @@ them. The update is queued in the outbox under a key per learner and virtual day
 on the same day is never queued, and its events wait for the next one. An update is kept under
 FEED_MAX_CHARS: long questions are shortened, and events that still do not fit stay after the
 member's (created_at, id) cursor for the next day's update. A score line is queued in its private
-form and shows the score only if its owner still shares scores when it is sent. Nudges (milestone
-6) are delivered immediately and are not part of this batch.
+form and shows the score only if its owner still shares scores when it is sent. On the day a
+member is first detected as quiet, every other member's update carries a prompt with a button to
+nudge them (`app/core/nudges.py`). The nudges themselves are delivered immediately and are not
+part of this batch.
 """
 import dataclasses
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from uuid import UUID
@@ -20,7 +23,7 @@ from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.adapters.base import Button
-from app.core import outbox
+from app.core import nudges, outbox
 from app.core.clock import Clock, virtual_day
 from app.core.i18n import t
 from app.core.lessons import lesson_questions
@@ -133,8 +136,9 @@ class Digest:
 
 
 def digest(session: Session, circle: Circle, recipient: Learner, member: CircleMember, statuses: list[MemberStatus],
-           today: date, now: datetime) -> Digest | None:
-    """The recipient's circle update: the other members' status lines, then events since their cursor.
+           today: date, now: datetime, quiet: Sequence[nudges.QuietMember] = ()) -> Digest | None:
+    """The recipient's circle update: the other members' status lines, nudge prompts for members newly
+    detected as quiet (never the recipient), then events since their cursor.
 
     The update stays under FEED_MAX_CHARS, counting every score as shown. Events that do not fit are
     left after the new cursor for the next update, and a closing line says how many are waiting.
@@ -149,7 +153,8 @@ def digest(session: Session, circle: Circle, recipient: Learner, member: CircleM
             shared = status_line(status, today, language)
             scores.append(outbox.ScoreLine(0, len(lines) - 1, status.learner_id, shared))
             longest += len(shared) - len(lines[-1])
-    size = len("\n".join(lines)) + longest
+    prompts, nudge_buttons = nudges.prompts(recipient, quiet)
+    size = len("\n".join([*lines, *([""] + prompts if prompts else [])])) + longest
     events, chunks, waiting = [], [], 0
     cursor = (now, None)  # everything up to now relayed, unless something has to wait
     handled = (member.feed_delivered_at or member.joined_at, member.feed_cursor_id if member.feed_delivered_at else None)
@@ -168,7 +173,7 @@ def digest(session: Session, circle: Circle, recipient: Learner, member: CircleM
         events.append(shown[0])
         if shown[1] is not None:
             chunks.append(shown[1])
-    if len(lines) == 1 and not events:
+    if len(lines) == 1 and not prompts and not events:
         return None
     if waiting:
         events.append(t("feed.more", language, count=waiting))
@@ -177,12 +182,16 @@ def digest(session: Session, circle: Circle, recipient: Learner, member: CircleM
     else:
         buttons = [Button(t("qa.show_source_n", language, number=number), f"{SHOW_SOURCE}{chunk.id}")
                    for number, chunk in enumerate(chunks, start=1)]
-    text = "\n".join([*lines, *([""] + events if events else [])])
-    return Digest(Reply(text, buttons), scores, cursor)
+    text = "\n".join([*lines, *([""] + prompts if prompts else []), *([""] + events if events else [])])
+    return Digest(Reply(text, [*nudge_buttons, *buttons]), scores, cursor)
 
 
-def queue_digests(session: Session, clock: Clock, circle: Circle, now: datetime) -> int:
-    """Queue today's update for every real member who has not had one today; returns how many were queued."""
+def queue_digests(session: Session, clock: Clock, circle: Circle, now: datetime,
+                  quiet: Sequence[nudges.QuietMember] = ()) -> int:
+    """Queue today's update for every real member who has not had one today; returns how many were queued.
+
+    `quiet` holds the members first detected as quiet today, whom the others are invited to nudge.
+    """
     today = virtual_day(now)
     statuses = member_statuses(session, circle.id, todays_lesson(session, circle.id, today))
     rows = session.execute(select(Learner, CircleMember).join(CircleMember, CircleMember.learner_id == Learner.id)
@@ -190,7 +199,7 @@ def queue_digests(session: Session, clock: Clock, circle: Circle, now: datetime)
                            .order_by(CircleMember.joined_at, Learner.id)).all()
     queued = 0
     for learner, member in rows:
-        update = digest(session, circle, learner, member, statuses, today, now)
+        update = digest(session, circle, learner, member, statuses, today, now, quiet)
         if update is None:
             continue
         key = f"feed:{circle.id}:{learner.id}:{today.isoformat()}"

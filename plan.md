@@ -102,7 +102,7 @@ Depends on milestones 3–4.
 - [x] Seed the goal, circle, admin learner, and Chidi, Halima, and Tunde with repeatable random seeds.
 - [x] Implement their specified check-in and answer behavior; simulated members have no chat IDs and receive no external messages.
 - [x] Restrict `/seed_demo`, `/simulate_day`, `/simulate_week`, `/reset_demo`, and `/demo_status` to `ADMIN_IDS`.
-- [x] Advance the clock by 24 hours per simulated day and run persona actions, lessons, inactivity checks, and feed delivery in a defined sequence. *(The inactivity step is a placeholder until milestone 6.)*
+- [x] Advance the clock by 24 hours per simulated day and run persona actions, lessons, inactivity checks, and feed delivery in a defined sequence. *(The inactivity step arrived with milestone 6.)*
 - [x] Connect APScheduler to virtual-time-aware job decisions and prevent duplicate daily processing.
 - [x] Batch ordinary circle updates to at most one message per learner per day. Reset circle state and clock without deleting the corpus.
 
@@ -146,12 +146,36 @@ Known limitations:
 
 Depends on milestone 5.
 
-- [ ] Detect quiet members and send the first nudge prompt to other circle members only.
-- [ ] Deliver nudges immediately, attributed to the initiating member, with lesson-request buttons.
-- [ ] Enforce one delivered nudge per recipient per virtual day across all senders, including concurrent requests.
-- [ ] Make Tunde return on the next simulated day after a nudge; avoid unsolicited automated reminders.
+- [x] Detect quiet members and send the first nudge prompt to other circle members only.
+- [x] Deliver nudges immediately, attributed to the initiating member, with lesson-request buttons.
+- [x] Enforce one delivered nudge per recipient per virtual day across all senders, including concurrent requests.
+- [x] Make Tunde return on the next simulated day after a nudge; avoid unsolicited automated reminders.
 
 **Completion check:** Detection occurs on day 3 after the last check-in, only one daily nudge reaches the recipient, and Tunde returns as specified. Pin the exact boundary in a test because section 7.6 describes two days of inactivity while section 16 states day-3 detection.
+
+**Validation:** `tests/test_nudges.py` runs on SQLite and PostgreSQL with the LLM disabled. It covers the following:
+- The boundary: after a Tuesday check-in, a member is not quiet on Tuesday, Wednesday or Thursday, and is quiet from Friday. A member who never checked in counts from the day they joined.
+- In a seeded run, Tunde (last check-in on day 2) is detected on day 5 and on no other day. Exactly one `missed` event is recorded for the spell. Only day 5's circle update carries the prompt and its button, and nobody is prompted about themselves.
+- Tapping the button records a nudge from the tapper. Tunde checks in again on day 6 and not on day 7, and the old button then answers that he has checked in recently.
+- A real quiet member gets nothing but the lesson posts and circle updates until someone taps. The nudge is queued under its own `nudge:<id>` key, outside the daily batch, and goes out on the outbox's next pass. It reads "👋 Carol from your circle is checking on you." with **Yes, send it** (today's lesson, as `/lesson`) and **Later** buttons.
+- Several senders, or one sender tapping repeatedly, produce one nudge per recipient per virtual day. The same prompt works again the next day while the member is still quiet, and a check-in ends it.
+- Two concurrent taps on PostgreSQL deliver one nudge, and the database rejects a second nudge row for the same recipient and day.
+- Upgrading a database that already holds queued nudges (revision 0005 → head, on both dialects) gives each one the expiry of its own nudge day, falling back to its queued time if its nudge row is gone, and leaves other messages without an expiry. Afterwards, yesterday's waiting nudge is not delivered beside today's.
+- The limit holds for delivery, not only queuing. A nudge left unsent on its day (no adapter, here) expires, so the next day only that day's nudge arrives. An expired row stays unsent, even after failed attempts, and holds back nothing queued after it.
+- Malformed payloads, a non-`missed` event, a member's own prompt, a non-member, and a deleted quiet member are all refused.
+
+Implementation notes:
+- **Boundary.** A member is quiet when `today − (last check-in day, or join day) > 2`, i.e. two whole virtual days have ended without a check-in. The daily run checks in the morning, at `LESSON_TIME`, before real learners act, so the day in progress never counts, and day-3 detection (section 16) and "after 2 days without check-in" (section 7.6) agree. Personas act earlier in the same run, so a persona who checks in that day is not detected. With Tunde's check-ins on days 1 and 2, he is detected on day 5, so the rehearsal of section 17 step 5 must simulate days 2 to 5 rather than 2 to 4.
+- **First detection.** `nudges.detect` (step 5 of `DemoEngine.run_day`) records a `missed` feed event whose ID is a uuid5 of circle, member and the day of the last check-in. ON CONFLICT DO NOTHING makes it the once-per-spell guard: a still-quiet member is not detected again, and a new check-in starts a new spell. The `missed` feed type and the `nudges` table with `one_nudge_per_recipient_day` came with the foundation.
+- **Prompt.** The prompt rides in that day's batched circle update, after the status lines ("💤 Tunde has gone quiet. A nudge from you could help.", button "👋 Send Tunde a nudge"), so it adds no message beyond the one-update-per-day limit. Every real member except the quiet one gets it. The button payload is `nd:s:<missed event id>`, so it names no learner, and it dies with the quiet member's data.
+- **Sending.** A tap locks the quiet member's `circle_members` row, re-checks that they are still quiet, and inserts the nudge with ON CONFLICT DO NOTHING on `(to_learner_id, virtual_day)`. Only the winner queues a message, under `nudge:<nudge id>`. The others are told someone already nudged today. Core code never calls an adapter, so "immediately" means the next two-second outbox pass rather than the next daily update. The queued nudge has `outbound_deliveries.expires_at` (migration 0006, which backfills nudges already queued from their nudge's `virtual_day`) set to the end of its virtual day, and the outbox never sends a row once its expiry has passed, checking on load and again just before sending. A nudge delayed by failures, a missing adapter or `/simulate_day` is therefore dropped rather than delivered next to the following day's, so at most one nudge reaches a recipient per virtual day. A nudge to a persona is recorded but never queued; the persona reads the `nudges` row the next simulated day.
+- **No automated reminders.** Ajo sends a quiet member nothing because they are quiet. They still get the daily lesson and circle update every member gets, and a nudge only when a person taps. Personas never send nudges.
+
+Known limitations:
+- A dropped nudge is not re-sent. Its sender is not told, and the quiet member can be nudged again the next day.
+- Expiry is checked just before the adapter is called, so a send that starts in the last instant of a day can land just after midnight. That window is milliseconds wide.
+- Personas cannot receive the nudge message, so the "Tunde's pane receives it" step of the demo script needs the milestone 9 web simulator to show a persona's nudges from the `nudges` table.
+- The prompt appears only in the update on the day of first detection. Its button keeps working while the spell lasts, but a member who joins the circle later, or whose update was never delivered, gets no prompt for that spell.
 
 ## Milestone 7: Weekly Payout and Minimum Demo
 

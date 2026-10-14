@@ -324,3 +324,5 @@ class OutboundDelivery(Identified, Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     # Set when delivery gave up after repeated failures; such rows are not retried.
     failed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
+    # Virtual time from which the row must no longer be sent, e.g. the end of a nudge's day; null: never.
+    expires_at: Mapped[datetime | None] = mapped_column(TIMESTAMP)
