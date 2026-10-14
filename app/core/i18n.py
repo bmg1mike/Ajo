@@ -229,6 +229,11 @@ STRINGS: dict[str, dict[Language, str]] = {
         Language.YO: "Fún báyìí, ọ̀rọ̀ tí a kọ sílẹ̀ nìkan ni mo lè kà.",
         Language.PCM: "For now na only text message I fit read.",
     },
+    "message.unsupported": {
+        Language.EN: "I can read text messages and listen to voice notes.",
+        Language.YO: "Mo lè ka ọ̀rọ̀ tí a kọ sílẹ̀, mo sì lè gbọ́ ohùn tí a gbà sílẹ̀.",
+        Language.PCM: "I fit read text message and listen to voice note.",
+    },
     "button.expired": {
         Language.EN: "That button has expired.",
         Language.YO: "Bọ́tìnnì yẹn ti kọjá àsìkò.",
@@ -286,6 +291,34 @@ STRINGS: dict[str, dict[Language, str]] = {
         Language.YO: "Orísun yẹn kò sí mọ́.",
         Language.PCM: "That source no dey again.",
     },
+    # Voice notes (spec sections 7.4 and 10.2)
+    "voice.heard": {Language.EN: "🎙️ I heard: “{text}”", Language.YO: "🎙️ Ohun tí mo gbọ́: “{text}”",
+                    Language.PCM: "🎙️ Wetin I hear: “{text}”"},
+    "voice.unavailable": {
+        Language.EN: "I can't listen to voice notes right now. Please type your question.",
+        Language.YO: "Mi ò lè gbọ́ ohùn tí a gbà sílẹ̀ báyìí. Jọ̀wọ́ kọ ìbéèrè rẹ sílẹ̀.",
+        Language.PCM: "I no fit listen to voice note now. Abeg type your question.",
+    },
+    "voice.too_long": {
+        Language.EN: "That voice note is too long. Please keep it under {seconds} seconds, or type your question.",
+        Language.YO: "Ohùn yẹn ti gùn jù. Jọ̀wọ́ jẹ́ kí ó kéré sí ìṣẹ́jú-àáyá {seconds}, tàbí kọ ìbéèrè rẹ sílẹ̀.",
+        Language.PCM: "That voice note too long. Abeg make am less than {seconds} seconds, or type your question.",
+    },
+    "voice.failed": {
+        Language.EN: "Sorry, I couldn't understand that voice note. Please try again or type your question.",
+        Language.YO: "Má bínú, kò yé mi ohùn yẹn. Jọ̀wọ́ gbìyànjú lẹ́ẹ̀kan sí i tàbí kọ ìbéèrè rẹ sílẹ̀.",
+        Language.PCM: "Sorry, I no understand that voice note. Abeg try again or type your question.",
+    },
+    "voice.empty": {
+        Language.EN: "I couldn't hear any words in that voice note. Please try again or type your question.",
+        Language.YO: "Mi ò gbọ́ ọ̀rọ̀ kankan nínú ohùn yẹn. Jọ̀wọ́ gbìyànjú lẹ́ẹ̀kan sí i tàbí kọ ìbéèrè rẹ sílẹ̀.",
+        Language.PCM: "I no hear any word for that voice note. Abeg try again or type your question.",
+    },
+    "voice.after_onboarding": {
+        Language.EN: "Please finish joining by typing or tapping the buttons. You can send voice notes after that.",
+        Language.YO: "Jọ̀wọ́ parí ìforúkọsílẹ̀ nípa kíkọ tàbí títẹ àwọn bọ́tìnnì. Lẹ́yìn náà o lè fi ohùn ránṣẹ́.",
+        Language.PCM: "Abeg finish to join by typing or pressing the buttons. After that you fit send voice note.",
+    },
     # Daily lessons (spec section 7.2)
     "lesson.header": {Language.EN: "📘 Day {day}: {topic}", Language.YO: "📘 Ọjọ́ {day}: {topic}",
                       Language.PCM: "📘 Day {day}: {topic}"},
@@ -295,6 +328,17 @@ STRINGS: dict[str, dict[Language, str]] = {
         Language.EN: "✏️ Answer questions",
         Language.YO: "✏️ Dáhùn àwọn ìbéèrè",
         Language.PCM: "✏️ Answer the questions",
+    },
+    "lesson.listen": {Language.EN: "🔊 Listen", Language.YO: "🔊 Gbọ́ ọ", Language.PCM: "🔊 Listen"},
+    "listen.english_only": {
+        Language.EN: "Audio in your language isn't ready yet, so here is the lesson read in English.",
+        Language.YO: "Ohùn ní èdè rẹ kò tíì ṣetán, nítorí náà èyí ni ẹ̀kọ́ náà tí a kà ní èdè Gẹ̀ẹ́sì.",
+        Language.PCM: "Audio for your language never ready, so na English we take read the lesson.",
+    },
+    "listen.unavailable": {
+        Language.EN: "Audio isn't available right now. Please read the lesson above.",
+        Language.YO: "Ohùn kò sí nísinsìnyí. Jọ̀wọ́ ka ẹ̀kọ́ tó wà lókè.",
+        Language.PCM: "Audio no dey now. Abeg read the lesson wey dey up.",
     },
     "lesson.english_only": {
         Language.EN: "A translation of this lesson isn't available right now, so here it is in English.",

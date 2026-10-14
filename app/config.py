@@ -28,7 +28,17 @@ class Settings(BaseSettings):
     stt_enabled: bool = False
     stt_backend: Literal["local", "groq"] = "local"
     groq_api_key: SecretStr = SecretStr("")
+    # Voice notes (milestone 8): a faster-whisper model size or path, or a Groq Whisper model.
+    stt_local_model: str = "small"
+    stt_groq_model: str = "whisper-large-v3-turbo"
+    stt_max_seconds: int = 60  # longer voice notes are refused before they are downloaded
+    # Lesson audio: an MMS-TTS model per language (blank: none), encoded to OGG/Opus with ffmpeg.
+    # English is required, because it is the fallback for languages without a reviewed voice.
+    tts_enabled: bool = False
+    tts_model_en: str = "facebook/mms-tts-eng"
     tts_model_yo: str = "facebook/mms-tts-yor"
+    tts_model_pcm: str = "facebook/mms-tts-pcm"
+    ffmpeg_path: str = "ffmpeg"
     embed_model: str = "intfloat/multilingual-e5-small"
     retrieval_min_score: float = 0.80
     llm_cache: bool = True
@@ -52,6 +62,13 @@ class Settings(BaseSettings):
     def validate_score(cls, value: float) -> float:
         if not 0 <= value <= 1:
             raise ValueError("RETRIEVAL_MIN_SCORE must be between 0 and 1")
+        return value
+
+    @field_validator("stt_max_seconds")
+    @classmethod
+    def validate_voice_length(cls, value: int) -> int:
+        if not 1 <= value <= 600:
+            raise ValueError("STT_MAX_SECONDS must be between 1 and 600")
         return value
 
     @field_validator("llm_temperature", mode="before")
@@ -82,4 +99,14 @@ class Settings(BaseSettings):
                 raise ValueError("LLM_BASE_URL must be an HTTP(S) URL when LLM is enabled")
         if self.stt_enabled and self.stt_backend == "groq" and not self.groq_api_key.get_secret_value().strip():
             raise ValueError("GROQ_API_KEY is required when Groq STT is enabled")
+        if self.stt_enabled and self.stt_backend == "local" and not self.stt_local_model.strip():
+            raise ValueError("STT_LOCAL_MODEL is required when local STT is enabled")
+        if self.tts_enabled and not self.tts_model_en.strip():
+            raise ValueError("TTS_MODEL_EN is required when TTS is enabled: English is the audio fallback")
         return self
+
+    @property
+    def tts_models(self) -> dict[str, str]:
+        """Language code to MMS-TTS model, for the languages that have one configured."""
+        models = {"en": self.tts_model_en, "yo": self.tts_model_yo, "pcm": self.tts_model_pcm}
+        return {language: model.strip() for language, model in models.items() if model.strip()}

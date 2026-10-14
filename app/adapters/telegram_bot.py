@@ -1,31 +1,41 @@
 """Telegram adapter: long polling in, Bot API messages out (spec section 10.2).
 
 Thin by design. Updates from private chats become `Inbound` messages for the core
-conversation; its replies go back as text with inline buttons. Core code reaches learners
-through `AdapterRegistry`, which routes to `TelegramAdapter`.
+conversation; its replies go back as text with inline buttons, voice notes and documents. Core
+code reaches learners through `AdapterRegistry`, which routes to `TelegramAdapter`.
+
+A voice note arrives as a `VoiceNote` whose `fetch` downloads the OGG/Opus file on the event
+loop when the core decides to transcribe it, so nothing is downloaded for a sender who has not
+onboarded or for a note that is too long.
 """
 import asyncio
 import logging
+import math
+import warnings
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import timedelta
 
 from fastapi import FastAPI
-from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup, Update, Voice
 from telegram.constants import ChatAction, ChatType
 from telegram.error import TelegramError
 from telegram.ext import Application, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 from telegram.request import BaseRequest
+from telegram.warnings import PTBDeprecationWarning
 
 from app.adapters.base import Button
 from app.core.conversation import Conversation, Inbound
 from app.core.i18n import t
 from app.core.replies import Reply
+from app.core.voice import VoiceNote
 from app.models import Channel, Learner
 
 logger = logging.getLogger(__name__)
 
 ALLOWED_UPDATES = ["message", "callback_query"]
 MAX_MESSAGE_CHARS = 4096  # Bot API limit for one text message
+DOWNLOAD_TIMEOUT_SECONDS = 60
 
 
 def keyboard(buttons: list[Button] | None) -> InlineKeyboardMarkup | None:
@@ -35,8 +45,28 @@ def keyboard(buttons: list[Button] | None) -> InlineKeyboardMarkup | None:
                                  for button in buttons])
 
 
+def voice_note(voice: Voice, loop: asyncio.AbstractEventLoop) -> VoiceNote:
+    """A voice note the conversation can download from its worker thread, on the bot's event loop."""
+
+    async def download() -> bytes:
+        file = await voice.get_file()
+        return bytes(await file.download_as_bytearray())
+
+    def fetch() -> bytes:
+        return asyncio.run_coroutine_threadsafe(download(), loop).result(timeout=DOWNLOAD_TIMEOUT_SECONDS)
+
+    with warnings.catch_warnings():  # an int today, a timedelta in later python-telegram-bot releases: both work
+        warnings.simplefilter("ignore", PTBDeprecationWarning)
+        duration = voice.duration
+    seconds = math.ceil(duration.total_seconds() if isinstance(duration, timedelta) else duration)
+    return VoiceNote(duration_seconds=seconds, fetch=fetch, size_bytes=voice.file_size)
+
+
 def inbound_from_update(update: Update) -> Inbound | None:
-    """Private-chat messages and button taps only: group chats would expose replies to others."""
+    """Private-chat messages and button taps only: group chats would expose replies to others.
+
+    Call it on the event loop: a voice note's download is scheduled there.
+    """
     user, chat = update.effective_user, update.effective_chat
     if user is None or chat is None or user.is_bot or chat.type != ChatType.PRIVATE:
         return None
@@ -44,6 +74,8 @@ def inbound_from_update(update: Update) -> Inbound | None:
     if update.callback_query is not None:
         return Inbound(**base, payload=update.callback_query.data or "")
     if update.message is not None:
+        if update.message.voice is not None:
+            return Inbound(**base, voice=voice_note(update.message.voice, asyncio.get_running_loop()))
         return Inbound(**base, text=update.message.text)
     return None
 
@@ -55,10 +87,12 @@ class TelegramAdapter:
         self.bot = bot
 
     async def reply(self, chat_id: str, reply: Reply) -> None:
-        """The text with its buttons, then any file as a document."""
+        """The text with its buttons, then any voice note, then any file as a document."""
         if reply.text or reply.buttons:
             await self.bot.send_message(chat_id=chat_id, text=reply.text[:MAX_MESSAGE_CHARS],
                                         reply_markup=keyboard(reply.buttons))
+        if reply.voice is not None:
+            await self.bot.send_voice(chat_id=chat_id, voice=reply.voice)
         if reply.file is not None:
             await self.bot.send_document(chat_id=chat_id, document=reply.file.data, filename=reply.file.filename)
 
@@ -95,7 +129,7 @@ def build_application(token: str, conversation: Conversation, *, request: BaseRe
         try:  # cosmetic: stop the button spinner, or show "typing" while QA runs
             if update.callback_query is not None:
                 await update.callback_query.answer()
-            elif inbound.text is not None:
+            elif inbound.text is not None or inbound.voice is not None:
                 await context.bot.send_chat_action(chat_id=inbound.chat_id, action=ChatAction.TYPING)
         except TelegramError as error:  # e.g. a callback query too old to answer
             logger.info("Ignoring Telegram acknowledgement failure: %s", type(error).__name__)

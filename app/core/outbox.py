@@ -81,6 +81,8 @@ def enqueue(session: Session, learner: Learner, replies: list[Reply], *, key: st
 
 
 def _message(reply: Reply) -> dict:
+    if reply.voice is not None:  # lesson audio is sent only on request, as a reply
+        raise ValueError("Voice notes are not queued")
     message = {"text": reply.text,
                "buttons": [{"text": button.text, "payload": button.payload} for button in reply.buttons]}
     if reply.file is not None:

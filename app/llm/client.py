@@ -101,7 +101,7 @@ class LLMClient:
                 if response.status_code not in RETRYABLE_STATUS:
                     raise LLMError(f"LLM request failed with HTTP {response.status_code}")
                 problem = f"HTTP {response.status_code}"
-                retry_after = _retry_after_seconds(response)
+                retry_after = retry_after_seconds(response)
             if attempt == self._max_attempts:
                 raise LLMError(f"LLM request failed after {attempt} attempts ({problem})")
             delay = self._backoff * 2 ** (attempt - 1) * (1 + random.random() / 2)
@@ -136,7 +136,7 @@ class LLMClient:
                             .on_conflict_do_nothing(index_elements=["prompt_hash"]))
 
 
-def _retry_after_seconds(response: httpx.Response) -> float | None:
+def retry_after_seconds(response: httpx.Response) -> float | None:
     value = response.headers.get("retry-after")
     if not value:
         return None

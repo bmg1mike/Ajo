@@ -14,10 +14,12 @@ from app.core.conversation import Conversation
 from app.core.embeddings import E5Embedder, LazyEmbedder
 from app.core.lessons import LessonService
 from app.core.qa import QAService
+from app.core.voice import VoiceService
 from app.db import build_engine, session_factory
 from app.llm.client import LLMClient
 from app.scheduler import scheduler_service
 from app.sim.engine import DemoEngine
+from app.speech import stt, tts
 
 # Background services (the scheduler) supply async context managers so their
 # tasks are stopped before the database pool is disposed, even on startup failure.
@@ -31,7 +33,7 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         configured = settings or Settings()
         engine = build_engine(configured.database_url)
-        llm = None
+        llm = voice = None
         try:
             application.state.settings = configured
             application.state.sessions = session_factory(engine)
@@ -41,7 +43,13 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
             embedder = LazyEmbedder(lambda: E5Embedder(configured.embed_model))  # shared: one model in memory
             application.state.qa = QAService(embedder, llm, application.state.clock,
                                              min_score=configured.retrieval_min_score)
-            application.state.lessons = LessonService(embedder, llm, application.state.clock)
+            # STT and TTS models load on first use; a missing or Opus-less ffmpeg stops startup here.
+            speaker = tts.from_settings(configured, application.state.sessions, application.state.clock)
+            voice = VoiceService(application.state.sessions, transcriber=stt.from_settings(configured),
+                                 speaker=speaker, max_seconds=configured.stt_max_seconds)
+            application.state.voice = voice
+            application.state.lessons = LessonService(embedder, llm, application.state.clock,
+                                                      audio=voice.speaker is not None)
             salt = configured.hash_salt.get_secret_value()
             application.state.demo = DemoEngine(application.state.sessions, application.state.clock,
                                                 application.state.lessons, embedder, salt=salt,
@@ -50,7 +58,7 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
             application.state.conversation = Conversation(application.state.sessions, application.state.clock,
                                                           application.state.qa, application.state.lessons,
                                                           salt=salt, admin=application.state.demo,
-                                                          admin_ids=configured.admin_user_ids)
+                                                          admin_ids=configured.admin_user_ids, voice=voice)
             with application.state.sessions() as session:
                 initialize(session)
             # A malformed file stops startup rather than leaving payouts with stale or unchecked entries.
@@ -66,6 +74,8 @@ def create_app(settings: Settings | None = None, *, services: Sequence[Backgroun
         finally:
             if llm is not None:
                 llm.close()
+            if voice is not None:
+                voice.close()
             engine.dispose()
 
     application = FastAPI(title="Ajo", lifespan=lifespan)

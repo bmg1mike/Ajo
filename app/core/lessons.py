@@ -59,6 +59,7 @@ PREFIX = "ls:"
 START_QUESTIONS = "ls:go:"
 ANSWER = "ls:a:"
 TODAY = "ls:today"  # today's lesson on request, as /lesson does; offered with a peer nudge
+LISTEN = "ls:listen:"  # lesson audio (app/core/voice.py), handled outside the conversation's transaction
 
 _NAMESPACE = UUID("8d7c5e0b-31a4-4f6e-9b0d-2a6c1e4f7a93")
 
@@ -429,8 +430,9 @@ class PregenerationResult:
 
 
 class LessonService:
-    def __init__(self, embedder: Embedder, llm: LLMClient, clock: Clock) -> None:
+    def __init__(self, embedder: Embedder, llm: LLMClient, clock: Clock, *, audio: bool = False) -> None:
         self.embedder, self.llm, self.clock = embedder, llm, clock
+        self.audio = audio  # offer the Listen button: TTS is on
 
     # Generation and translation. LLM calls block; callers make them before writing anything,
     # so the client's cache writes never wait on the caller's transaction.
@@ -588,7 +590,7 @@ class LessonService:
         except LessonUnavailable as error:
             logger.warning("No lesson available: %s", error)
             return [Reply(t("lesson.unavailable", learner.language))]
-        return lesson_replies(session, lesson, learner)
+        return lesson_replies(session, lesson, learner, audio=self.audio)
 
     def post(self, session: Session, circle: Circle, now: datetime) -> tuple[Lesson, list[tuple[Learner, list[Reply]]]]:
         """Today's lesson for a whole circle, translated into every real member's language, with each real
@@ -598,7 +600,7 @@ class LessonService:
                                   .where(CircleMember.circle_id == circle.id, Learner.is_simulated.is_(False))
                                   .order_by(CircleMember.joined_at, Learner.id)).all()
         lesson = self.todays_lesson(session, circle, now, {member.language for member in members})
-        return lesson, [(member, lesson_replies(session, lesson, member)) for member in members]
+        return lesson, [(member, lesson_replies(session, lesson, member, audio=self.audio)) for member in members]
 
     # Pre-generation
 
@@ -632,8 +634,11 @@ def localized(lesson: Lesson, language: Language) -> dict:
     return lesson.body.get(Language(language).value) or lesson.body["en"]
 
 
-def lesson_replies(session: Session, lesson: Lesson, learner: Learner) -> list[Reply]:
-    """The lesson message: header, lesson, worked example, untranslated sources and buttons (spec section 7.2)."""
+def lesson_replies(session: Session, lesson: Lesson, learner: Learner, *, audio: bool = False) -> list[Reply]:
+    """The lesson message: header, lesson, worked example, untranslated sources and buttons (spec section 7.2).
+
+    With `audio` (TTS is on), a Listen button comes before the answer button.
+    """
     language = Language(learner.language)
     note = [] if language.value in lesson.body else [Reply(t("lesson.english_only", language))]
     body = localized(lesson, language)
@@ -641,8 +646,9 @@ def lesson_replies(session: Session, lesson: Lesson, learner: Learner) -> list[R
     sources, buttons = source_footer(language, load_chunks(session, lesson.cited_chunk_ids))
     text = (f"{t('lesson.header', language, day=lesson.day_index, topic=topic.title)}\n{body['lesson']}\n\n"
             f"{t('lesson.example', language, example=body['example'])}\n\n{sources}")
-    return [*note, Reply(text, [*buttons, Button(t("lesson.answer_questions", language),
-                                                 f"{START_QUESTIONS}{lesson.id}")])]
+    listen = [Button(t("lesson.listen", language), f"{LISTEN}{lesson.id}")] if audio else []
+    return [*note, Reply(text, [*buttons, *listen, Button(t("lesson.answer_questions", language),
+                                                          f"{START_QUESTIONS}{lesson.id}")])]
 
 
 # Command line

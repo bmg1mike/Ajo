@@ -12,7 +12,11 @@ class Attachment:
 
 @dataclass(frozen=True)
 class Reply:
-    """One outbound message: text plus optional buttons and file. Adapters decide how to render it."""
+    """One outbound message: text plus optional buttons, file and voice note (OGG/Opus).
+
+    Adapters decide how to render it; text and buttons come first, then the voice note, then the file.
+    """
     text: str
     buttons: list[Button] = field(default_factory=list)
     file: Attachment | None = None
+    voice: bytes | None = field(default=None, repr=False)

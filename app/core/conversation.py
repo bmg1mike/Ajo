@@ -1,9 +1,12 @@
 """Channel-agnostic message routing. Adapters turn platform updates into `Inbound` and send back the replies.
 
 Commands: /start, /lesson, /ask, /progress, /pack, /language, /share_scores, /delete_me and /help. Any other text from
-an onboarded learner is a question for QA (spec section 7.4). Raw channel user IDs are hashed
-on arrival and never stored. Button payloads are namespaced: `ob:` onboarding, `acct:` account,
-`qa:` QA, `ls:` lessons and `nd:` peer nudges.
+an onboarded learner is a question for QA (spec section 7.4), and so is a voice note once it is
+transcribed. Raw channel user IDs are hashed on arrival and never stored. Button payloads are
+namespaced: `ob:` onboarding, `acct:` account, `qa:` QA, `ls:` lessons and `nd:` peer nudges.
+
+Transcription and the lesson Listen button (app/core/voice.py) take seconds, so they run outside
+the message's transaction.
 
 The demo admin commands (spec section 9.3) work only for Telegram user IDs listed in ADMIN_IDS,
 checked against the raw ID before it is hashed. Everyone else is refused, onboarded or not.
@@ -18,6 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.core import account, grading, lessons, nudges, onboarding, payouts, qa
+from app.core.voice import VoiceNote, VoiceRejected, VoiceService
 from app.core.clock import Clock
 from app.core.i18n import t
 from app.core.privacy import channel_hash
@@ -38,9 +42,11 @@ class Inbound:
     chat_id: str  # where replies go; stored on the learner for later deliveries
     text: str | None = None
     payload: str | None = None  # button callback data
+    voice: VoiceNote | None = None
 
     def __repr__(self) -> str:  # keep raw identifiers out of logs and tracebacks
-        return f"Inbound(channel={self.channel.value!r}, text={self.text is not None}, payload={self.payload!r})"
+        return (f"Inbound(channel={self.channel.value!r}, text={self.text is not None}, payload={self.payload!r}, "
+                f"voice={self.voice is not None})")
 
 
 def parse_command(text: str) -> tuple[str | None, str]:
@@ -62,17 +68,42 @@ class AdminCommands(Protocol):
 class Conversation:
     def __init__(self, sessions: sessionmaker[Session], clock: Clock, qa_service: qa.QAService,
                  lesson_service: lessons.LessonService, *, salt: str, admin: AdminCommands | None = None,
-                 admin_ids: frozenset[int] = frozenset()) -> None:
+                 admin_ids: frozenset[int] = frozenset(), voice: VoiceService | None = None) -> None:
         self.sessions, self.clock, self.qa, self.lessons, self.salt = sessions, clock, qa_service, lesson_service, salt
         self.admin, self.admin_ids = admin, admin_ids
+        self.voice = voice or VoiceService(sessions)  # without one, voice notes and Listen say they're unavailable
 
     def handle(self, inbound: Inbound) -> list[Reply]:
-        """Process one message or button tap in a single transaction. Blocks on LLM calls."""
+        """Process one message or button tap in a single transaction. Blocks on LLM, STT and TTS calls."""
         admin_replies = self._admin_request(inbound)
         if admin_replies is not None:
             return admin_replies
+        if inbound.payload is not None and inbound.payload.startswith(lessons.LISTEN):
+            return self.voice.listen(channel_hash(inbound.channel, inbound.user_id, self.salt), inbound.payload)
+        transcript = None
+        if inbound.voice is not None and inbound.text is None and inbound.payload is None:
+            transcribed = self._transcribe(inbound)
+            if isinstance(transcribed, Reply):
+                return [transcribed]
+            transcript = transcribed
         with self.sessions.begin() as session:
-            return self._route(session, inbound)
+            return self._route(session, inbound, transcript)
+
+    def _transcribe(self, inbound: Inbound) -> str | Reply | None:
+        """A voice note's transcript, a reply saying why there is none, or None if the sender is not a learner yet.
+
+        The audio is fetched only for an onboarded learner, so nothing is downloaded before consent.
+        """
+        with self.sessions() as session:
+            learner = session.scalar(select(Learner).where(
+                Learner.channel_user_hash == channel_hash(inbound.channel, inbound.user_id, self.salt)))
+            if learner is None:
+                return None
+            language = Language(learner.language)
+        try:
+            return self.voice.transcribe(inbound.voice, language)
+        except VoiceRejected as rejected:
+            return rejected.reply(language)
 
     def is_admin(self, inbound: Inbound) -> bool:
         return (inbound.channel == Channel.TELEGRAM and inbound.user_id.isdigit()
@@ -103,7 +134,7 @@ class Conversation:
             state = session.get(Onboarding, user_hash) if learner is None else None
         return learner.language if learner else state.language if state else Language.EN
 
-    def _route(self, session: Session, inbound: Inbound) -> list[Reply]:
+    def _route(self, session: Session, inbound: Inbound, transcript: str | None = None) -> list[Reply]:
         user_hash = channel_hash(inbound.channel, inbound.user_id, self.salt)
         now = self.clock.now(session)
         # Lock onboarding progress first so concurrent taps on the last step create one learner, not two.
@@ -115,8 +146,13 @@ class Conversation:
 
         if inbound.payload is not None:
             return self._button(session, inbound, learner, state, user_hash, now)
+        if inbound.voice is not None and inbound.text is None:
+            if learner is None:  # not transcribed: nothing is processed before consent
+                return [Reply(t("voice.after_onboarding", language)), *onboarding.resume(session, state, None, now)]
+            if transcript is not None:  # a spoken question, never a command
+                return [Reply(t("voice.heard", language, text=transcript)), self.qa.ask(session, learner, transcript).reply]
         if inbound.text is None:
-            return [Reply(t("message.text_only", language))]
+            return [Reply(t("message.unsupported" if self.voice.listening else "message.text_only", language))]
         command, argument = parse_command(inbound.text)
         if command == "start":
             if learner is not None:

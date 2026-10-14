@@ -1,10 +1,16 @@
-"""Rehearse the minimum Telegram demo (spec section 17, without voice, web or USSD) and count LLM cache misses.
+"""Rehearse the minimum Telegram demo (spec section 17, without web or USSD) and count LLM cache misses.
 
 A synthetic admin goes through the script through the same `Conversation` the Telegram adapter
 uses: onboarding, /seed_demo, day 1 with a wrong answer and its private follow-up, a cited
 question and an off-topic one, days 2 to 5 until Tunde goes quiet, a nudge, day 6 when he
 returns, /simulate_week to the day 7 payout (which must offer the top-ranked open scholarship with
 its link), then /progress and /pack.
+
+With --voice it also taps Listen on the day 1 lesson (the learner's language if its voice is
+reviewed, otherwise English with a note) and sends a spoken question. No microphone is involved:
+the question is spoken by the English MMS voice, then transcribed by the configured STT backend
+(STT_BACKEND; faster-whisper by default). It needs an ffmpeg with libopus (FFMPEG_PATH). The
+transcript is a new question for the LLM cache, so run it once with --live.
 
 By default the LLM is switched off, so every response must come from the cache: a miss is counted
 and the step falls back as it would in a demo with no network. With --live, the configured LLM
@@ -24,21 +30,26 @@ from uuid import UUID
 from sqlalchemy import select
 
 from app.config import Settings
-from app.core import lessons, opportunities, outbox, qa
+from app.core import account, lessons, opportunities, outbox, qa
 from app.core.clock import Clock, virtual_day
 from app.core.conversation import Conversation, Inbound
+from app.core.i18n import t
 from app.core.embeddings import E5Embedder
 from app.core.pack import PACK_MAX_BYTES
 from app.core.lessons import LessonService
 from app.core.privacy import channel_hash
 from app.core.qa import QAService
+from app.core.voice import VoiceNote, VoiceService
 from app.db import build_engine, session_factory
 from app.llm.client import LLMClient, LLMUnavailable
 from app.models import Channel, Goal, Language, Learner, OpportunityKind, OutboundDelivery, Question
 from app.sim.engine import RESET_YES, DemoEngine
+from app.speech import stt, tts
 
 ADMIN_ID = "7000000001"  # synthetic, shaped like a Telegram user ID
 OFF_TOPIC = "Who won the Super Eagles match?"
+# Whisper hears this exactly in the English MMS voice; it mishears a bare "What is photosynthesis?".
+VOICE_QUESTION = "What gas do plants release during photosynthesis?"
 
 
 class CountingLLM(LLMClient):
@@ -61,6 +72,10 @@ def parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser.add_argument("--language", choices=[item.value for item in Language], default=Language.EN.value)
     parser.add_argument("--question", help="the cited question to ask (default: the first answerable QA eval question)")
     parser.add_argument("--live", action="store_true", help="let the configured LLM answer misses and warm the cache")
+    parser.add_argument("--voice", action="store_true",
+                        help="also tap Listen and ask a spoken question (MMS-TTS, the configured STT and ffmpeg)")
+    parser.add_argument("--voice-question", default=VOICE_QUESTION, help="the question the English voice asks")
+    parser.add_argument("--save-audio", type=Path, help="with --voice, write the lesson audio and question here")
     return parser.parse_args(argv)
 
 
@@ -76,20 +91,29 @@ def main(argv: Sequence[str] | None = None) -> int:
     llm = CountingLLM.from_settings(settings, sessions, clock, enabled=args.live and settings.llm_enabled, cache=True)
     embedder = E5Embedder(settings.embed_model)
     salt = settings.hash_salt.get_secret_value()
-    lesson_service = LessonService(embedder, llm, clock)
+    voice = speaker = None
+    if args.voice:  # model and ffmpeg settings come from .env; voice is rehearsed even if it is off there
+        speaker = tts.Speaker(tts.MMSSynthesizer({Language(code): model for code, model in settings.tts_models.items()}),
+                              tts.OpusEncoder(settings.ffmpeg_path), sessions, clock)
+        voice = VoiceService(sessions, transcriber=stt.from_settings(settings.model_copy(update={"stt_enabled": True})),
+                             speaker=speaker, max_seconds=settings.stt_max_seconds)
+    lesson_service = LessonService(embedder, llm, clock, audio=voice is not None)
     demo = DemoEngine(sessions, clock, lesson_service, embedder, salt=salt, min_score=settings.retrieval_min_score,
                       goal_code=settings.demo_goal)
     conversation = Conversation(sessions, clock, QAService(embedder, llm, clock, min_score=settings.retrieval_min_score),
-                                lesson_service, salt=salt, admin=demo, admin_ids=frozenset({int(ADMIN_ID)}))
+                                lesson_service, salt=salt, admin=demo, admin_ids=frozenset({int(ADMIN_ID)}),
+                                voice=voice)
     problems: list[str] = []
 
-    def say(label: str, *, text: str | None = None, payload: str | None = None):
-        replies = conversation.handle(Inbound(Channel.TELEGRAM, ADMIN_ID, ADMIN_ID, text=text, payload=payload))
+    def say(label: str, *, text: str | None = None, payload: str | None = None, note: VoiceNote | None = None):
+        replies = conversation.handle(Inbound(Channel.TELEGRAM, ADMIN_ID, ADMIN_ID, text=text, payload=payload,
+                                              voice=note))
         print(f"\n> {label}")
         for reply in replies:
             shown = reply.text if len(reply.text) <= 400 else reply.text[:400] + " …"
             print("  " + shown.replace("\n", "\n  ") + (f"\n  [file {reply.file.filename}, {len(reply.file.data)} "
-                                                       "bytes]" if reply.file else ""))
+                                                       "bytes]" if reply.file else "")
+                  + (f"\n  [voice note, {len(reply.voice)} bytes]" if reply.voice else ""))
         return replies
 
     def button(replies, prefix: str, index: int = 0) -> str:
@@ -113,12 +137,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             say(f"language {args.language}", payload=f"ob:lang:{args.language}")
             say("first name", text="Amaka")
             say("goal", payload=f"ob:goal:{goal_id}")
+        else:  # left by an earlier rehearsal, perhaps in another language
+            say(f"/language {args.language}", payload=f"{account.SET_LANGUAGE}{args.language}")
         say("/reset_demo", text="/reset_demo")
         say("confirm reset", payload=RESET_YES)
         say(f"/seed_demo {args.seed}", text=f"/seed_demo {args.seed}")
         # Day 1 (step 3): the lesson, a wrong answer and the private follow-up.
         say("/simulate_day", text="/simulate_day")
-        replies = say("/lesson", text="/lesson")
+        lesson_message = replies = say("/lesson", text="/lesson")
         replies = say("Answer questions", payload=button(replies, lessons.START_QUESTIONS))
         options = [b.payload for b in replies[-1].buttons if b.payload.startswith(lessons.ANSWER)]
         with sessions() as session:
@@ -131,6 +157,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         replies = say(question, text=question)
         if not any(b.payload.startswith(qa.SHOW_SOURCE) for r in replies for b in r.buttons):
             problems.append("the library question was not answered with a citation")
+        if voice is not None:
+            rehearse_voice(args, say, button, lesson_message, speaker, problems)
         replies = say(OFF_TOPIC, text=OFF_TOPIC)
         if not any(b.payload.startswith(qa.ASK_CIRCLE) for r in replies for b in r.buttons):
             problems.append("the off-topic question did not fall back")
@@ -180,6 +208,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         say("/pack", text="/pack")
     finally:
         llm.close()
+        if voice is not None:
+            voice.close()
         engine.dispose()
     print(f"\nLLM requests: {CountingLLM.requests}, cache misses: {CountingLLM.misses}"
           + (" (answered live)" if args.live else ""))
@@ -187,6 +217,32 @@ def main(argv: Sequence[str] | None = None) -> int:
         problems.append(f"{CountingLLM.misses} LLM request(s) were not cached; rehearse once with --live to warm them")
     print("\n".join(["PASS"] if not problems else [f"PROBLEM: {problem}" for problem in problems]))
     return 0 if not problems else 1
+
+
+def rehearse_voice(args: argparse.Namespace, say, button, lesson_message, speaker: tts.Speaker,
+                   problems: list[str]) -> None:
+    """Listen to the day 1 lesson, then ask a question by voice (spec sections 17 steps 3 and 4)."""
+    language = Language(args.language)
+    replies = say("🔊 Listen", payload=button(lesson_message, lessons.LISTEN))
+    audio = [reply for reply in replies if reply.voice]
+    expected_note = "" if language == Language.EN or language in tts.AUDIO_REVIEWED else t("listen.english_only",
+                                                                                          language)
+    if not audio:
+        problems.append("Listen sent no audio")
+    elif audio[0].text != expected_note:
+        problems.append(f"Listen note was {audio[0].text!r}, expected {expected_note!r}")
+    question = speaker.speak(args.voice_question, Language.EN)
+    if args.save_audio:
+        args.save_audio.mkdir(parents=True, exist_ok=True)
+        (args.save_audio / "voice-question.ogg").write_bytes(question)
+        if audio:
+            (args.save_audio / "lesson.ogg").write_bytes(audio[0].voice)
+    # Generated audio has no reported length; the size limit still applies after download.
+    replies = say(f"🎙️ voice note: {args.voice_question}", note=VoiceNote(duration_seconds=0, fetch=lambda: question))
+    if not replies[0].text.startswith("🎙️"):
+        problems.append("the voice question was not transcribed")
+    elif not any(b.payload.startswith(qa.SHOW_SOURCE) for r in replies for b in r.buttons):
+        problems.append("the voice question was not answered with a citation")
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     JSON, BigInteger, Boolean, CheckConstraint, Date, DateTime, Enum, Float,
-    ForeignKey, Integer, String, Text, TypeDecorator, UniqueConstraint, Uuid,
+    ForeignKey, Integer, LargeBinary, String, Text, TypeDecorator, UniqueConstraint, Uuid,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -340,6 +340,17 @@ class LLMCache(Base):
     # Hash the full provider/model/prompt configuration. Never store raw prompts.
     prompt_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     response: Mapped[dict] = mapped_column(JSON_TYPE)
+    created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
+
+
+class SpeechCache(Base):
+    """Synthesized OGG/Opus audio of lesson text, keyed by a hash of model, language, text and encoding.
+
+    Lessons name no learner, so nothing here refers to anyone; like the LLM cache, it survives a reset.
+    """
+    __tablename__ = "speech_cache"
+    audio_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    audio: Mapped[bytes] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = mapped_column(TIMESTAMP)
 
 
